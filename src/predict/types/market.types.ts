@@ -71,3 +71,52 @@ export interface GetAllPositionsResponse {
   data: Position[];
 }
 
+export enum MarketVariant {
+  DEFAULT = 'DEFAULT',
+  SPORTS_MATCH = 'SPORTS_MATCH',
+  CRYPTO_UP_DOWN = 'CRYPTO_UP_DOWN'
+}
+
+export enum CategoryStatus {
+  OPEN = 'OPEN',
+  RESOLVED = 'RESOLVED'
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+}
+
+export interface Category {
+  id: number;
+  slug: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  isNegRisk: boolean;
+  isYieldBearing: boolean;
+  marketVariant: MarketVariant;
+  createdAt: string;
+  markets: Market[];
+  startsAt: string;
+  status: CategoryStatus;
+  tags: Tag[];
+}
+
+export interface GetCategoriesByResponse {
+  success: boolean;
+  cursor: string;
+  data: Category[];
+}
+
+export interface MarketStatistics {
+  totalLiquidityUsd: number;
+  volumeTotalUsd: number;
+  volume24hUsd: number;
+}
+
+export interface GetMarketStatisticsResponse {
+  success: boolean;
+  data: MarketStatistics
+}
+
