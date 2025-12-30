@@ -12,6 +12,7 @@ import {
 } from './types/market.types';
 import { BalanceResponse } from './types/balance.types';
 import { AuthMessageResponse, AuthResponse } from './types/auth.types';
+import { targetSlugs } from 'src/lib/constants';
 
 @Injectable()
 export class PredictService implements OnModuleInit {
@@ -110,12 +111,6 @@ export class PredictService implements OnModuleInit {
           `Failed to get default markets: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       }
-      const targetSlugs = [
-        'what-price-will-bitcoin-hit-before-feb-2026',
-        'what-price-will-eth-hit-before-feb-2026',
-        'what-price-will-bnb-hit-before-feb-2026',
-        'will-base-launch-a-token-in-2026',
-      ];
       const filteredCategories = categories.filter((category) =>
         targetSlugs.includes(category.slug),
       );
@@ -224,6 +219,7 @@ export class PredictService implements OnModuleInit {
           '================================================== Positions Table ========================================',
         );
         const tableData = positions.data.map((position) => ({
+          id: position.market.id,
           title: position.market.title,
           shares: formatEther(position.amount),
           usd: `$${parseFloat(position.valueUsd).toFixed(2)}`,
