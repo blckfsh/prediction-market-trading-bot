@@ -1,13 +1,14 @@
-import 'dotenv/config';
-import { Test, TestingModule } from '@nestjs/testing';
-import { PrismaClient } from '../generated/prisma/client';
-import { Pool } from 'pg';
-import { PrismaPg } from '@prisma/adapter-pg';
+require('dotenv/config');
+
+const { Test } = require('@nestjs/testing');
+const { PrismaClient } = require('../generated/prisma/client');
+const { Pool } = require('pg');
+const { PrismaPg } = require('@prisma/adapter-pg');
 
 describe('Database connectivity', () => {
-  let moduleRef: TestingModule;
-  let pool: Pool;
-  let prisma: PrismaClient;
+  let moduleRef;
+  let pool;
+  let prisma;
 
   beforeAll(async () => {
     const connectionString =
@@ -27,7 +28,7 @@ describe('Database connectivity', () => {
         },
         {
           provide: PrismaClient,
-          useFactory: (p: Pool) => {
+          useFactory: (p) => {
             const adapter = new PrismaPg(p);
             return new PrismaClient({ adapter });
           },
@@ -47,7 +48,7 @@ describe('Database connectivity', () => {
   });
 
   it('connects and returns SELECT 1', async () => {
-    const result = await prisma.$queryRaw<{ ok: number }[]>`SELECT 1 AS ok`;
+    const result = await prisma.$queryRaw`SELECT 1 AS ok`;
     expect(result?.[0]?.ok).toBe(1);
   });
 });
