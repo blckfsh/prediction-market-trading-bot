@@ -17,3 +17,9 @@ model Trade {
   status            TradeStatus
 }
 
+model WalletApproval {
+  id              Int         @id @default(autoincrement())
+  walletAddress   String
+  timestamp       DateTime
+}
+

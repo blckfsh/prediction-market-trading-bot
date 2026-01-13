@@ -50,6 +50,30 @@ export class SchemaType implements SchemaDef {
             uniqueFields: {
                 id: { type: "Int" }
             }
+        },
+        WalletApproval: {
+            name: "WalletApproval",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                walletAddress: {
+                    name: "walletAddress",
+                    type: "String"
+                },
+                timestamp: {
+                    name: "timestamp",
+                    type: "DateTime"
+                }
+            },
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" }
+            }
         }
     } as const;
     enums = {

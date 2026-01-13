@@ -53,11 +53,16 @@ describe('PredictService', () => {
       {} as any,
     ) as unknown as PredictRepository;
 
+    // attach mocks for wallet approvals explicitly to avoid undefined in tests
+    (predictRepository as any).getWalletApprovalByWalletAddress = jest.fn();
+    (predictRepository as any).saveWalletApprovals = jest.fn();
+
     service = new PredictService(configService, predictRepository);
 
     // Inject required config values directly
     (service as any).baseUrl = 'https://api.example.com';
     (service as any).apiKey = 'test-api-key';
+    (service as any).predictAccount = '0xPredict';
 
     // Mock Headers used in fetch calls
     global.Headers = jest.fn(() => ({
@@ -66,7 +71,6 @@ describe('PredictService', () => {
 
     // Default token for authenticated endpoints
     (service as any).token = 'jwt-token';
-    (service as any).predictAccount = '0xPredict';
   });
 
   afterEach(() => {
@@ -337,5 +341,43 @@ describe('PredictService', () => {
       }),
     );
     expect(result).toEqual(mockResponse);
+  });
+
+  it('setApprovals should skip if already approved', async () => {
+    const repo = predictRepository as any;
+    repo.getWalletApprovalByWalletAddress.mockResolvedValue({ id: 1 });
+
+    const result = await service.setApprovals();
+
+    expect(repo.getWalletApprovalByWalletAddress).toHaveBeenCalledWith(
+      '0xPredict',
+    );
+    expect(repo.saveWalletApprovals).not.toHaveBeenCalled();
+    expect(result).toBeUndefined();
+  });
+
+  it('setApprovals should call orderBuilder and persist approval', async () => {
+    const repo = predictRepository as any;
+    repo.getWalletApprovalByWalletAddress.mockResolvedValue(null);
+    repo.saveWalletApprovals.mockResolvedValue({ id: 2 });
+
+    (service as any).orderBuilder = {
+      setApprovals: jest.fn().mockResolvedValue({
+        success: true,
+        transactions: [],
+      }),
+    };
+
+    const result = await service.setApprovals();
+
+    expect(repo.getWalletApprovalByWalletAddress).toHaveBeenCalledWith(
+      '0xPredict',
+    );
+    expect((service as any).orderBuilder.setApprovals).toHaveBeenCalled();
+    expect(repo.saveWalletApprovals).toHaveBeenCalledWith('0xPredict');
+    expect(result).toEqual({
+      success: true,
+      transactions: [],
+    });
   });
 });

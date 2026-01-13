@@ -14,7 +14,7 @@ import {
   Side,
   SetApprovalsResult,
 } from '@predictdotfun/sdk';
-import { Trade, TradeStatus } from 'generated/prisma/client';
+import { Trade, TradeStatus, WalletApproval } from 'generated/prisma/client';
 import { BalanceResponse } from 'src/predict/types/balance.types';
 import {
   Category,
@@ -77,9 +77,8 @@ export class PredictService implements OnModuleInit {
     await this.initializeCategoryTable();
     this.logger.log('Checking for positions...');
     await this.initializePositionTable();
-    // NOTE: Call it once per wallet.
-    // this.logger.log('Setting approvals...');
-    // await this.setApprovals();
+    this.logger.log('Setting approvals...');
+    await this.setApprovals();
     this.logger.log('Creating market trades...');
     await this.initializeMarketTrade();
   }
@@ -612,20 +611,55 @@ export class PredictService implements OnModuleInit {
     return data;
   }
 
-  async setApprovals(): Promise<SetApprovalsResult> {
+  async setApprovals(): Promise<SetApprovalsResult | void> {
     let result: SetApprovalsResult | null = null;
 
     try {
+      const selectedWalletApproval =
+        await this.predictRepository.getWalletApprovalByWalletAddress(
+          this.predictAccount!,
+        );
+      if (selectedWalletApproval) {
+        this.logger.log(
+          `Wallet approvals already set for ${this.predictAccount!}.`,
+        );
+        return;
+      }
+
       // NOTE: You can also call `setApprovals` once per wallet.
       result = await this.orderBuilder!.setApprovals();
       if (!result.success) throw new Error('Failed to set approvals.');
+
+      const walletApproval = await this.saveWalletApprovals();
+      if (!walletApproval) throw new Error('Failed to save wallet approvals.');
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to set approvals: ${error.message}`);
       }
       throw new Error('Failed to set approvals: Unknown error');
     }
+
     return result;
+  }
+
+  async saveWalletApprovals() {
+    let walletApproval: WalletApproval | null = null;
+    try {
+      walletApproval = await this.predictRepository.saveWalletApprovals(
+        this.predictAccount!,
+      );
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to save wallet approvals: ${error.message}`);
+      }
+      throw new Error('Failed to save wallet approvals: Unknown error');
+    } finally {
+      this.logger.log(
+        `Wallet approvals saved, id: ${walletApproval?.id ?? 'N/A'}`,
+      );
+    }
+
+    return walletApproval;
   }
 
   async createOrder(

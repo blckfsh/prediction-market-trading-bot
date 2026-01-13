@@ -7,6 +7,18 @@ import { ZeroHash } from 'ethers';
 export class PredictRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getTradeByMarketId(marketId: number) {
+    return this.prisma.trade.findFirst({
+      where: { marketId },
+    });
+  }
+
+  async getWalletApprovalByWalletAddress(walletAddress: string) {
+    return this.prisma.walletApproval.findFirst({
+      where: { walletAddress },
+    });
+  }
+
   async saveMarketTrade({
     marketId,
     slug,
@@ -27,9 +39,12 @@ export class PredictRepository {
     });
   }
 
-  async getTradeByMarketId(marketId: number) {
-    return this.prisma.trade.findFirst({
-      where: { marketId },
+  async saveWalletApprovals(walletAddress: string) {
+    return this.prisma.walletApproval.create({
+      data: {
+        walletAddress,
+        timestamp: new Date(),
+      },
     });
   }
 }
