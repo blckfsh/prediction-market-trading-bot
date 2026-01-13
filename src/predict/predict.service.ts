@@ -1,391 +1,406 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { formatEther, formatUnits, Wallet } from 'ethers';
-import { OrderBuilder, ChainId } from '@predictdotfun/sdk';
 import {
+  formatEther,
+  formatUnits,
+  parseEther,
+  Wallet,
+  ZeroAddress,
+  ZeroHash,
+} from 'ethers';
+import {
+  OrderBuilder,
+  ChainId,
+  Side,
+  SetApprovalsResult,
+} from '@predictdotfun/sdk';
+import { Trade, TradeStatus } from 'generated/prisma/client';
+import { BalanceResponse } from 'src/predict/types/balance.types';
+import {
+  Category,
+  Position,
+  MarketStatistics,
+  Market,
+  OrderBookData,
+  OrderStrategy,
+  TradeStrategy,
+  CreateOrderBody,
+  SaveMarketTradeInput,
   GetAllMarketsResponse,
   GetAllPositionsResponse,
   GetCategoriesByResponse,
-  MarketVariant,
-  Category,
   GetMarketStatisticsResponse,
-} from './types/market.types';
-import { BalanceResponse } from './types/balance.types';
-import { AuthMessageResponse, AuthResponse } from './types/auth.types';
+  GetOrderBookResponse,
+  MarketDataResponse,
+  CreateOrderResponse,
+} from 'src/predict/types/market.types';
+import {
+  AuthMessageResponse,
+  AuthResponse,
+} from 'src/predict/types/auth.types';
+import { PredictRepository } from 'src/predict/predict.repository';
 import { targetSlugs } from 'src/lib/constants';
+import { fetchWithRetry } from 'src/lib/utils/http';
+import { normalizeDepth } from 'src/lib/utils/orderbook';
+import { filterAndSortCryptoUpDownCategories } from 'src/lib/utils/categories';
 
 @Injectable()
 export class PredictService implements OnModuleInit {
   private readonly logger = new Logger(PredictService.name);
+  private baseUrl: string | undefined;
+  private apiKey: string | undefined;
+  private predictAccount: string | undefined;
+  private walletPrivateKey: string | undefined;
+  private signer: Wallet | null = null;
   private orderBuilder: OrderBuilder | null = null;
   private token: string | null = null;
+  private categories: Category[] = [];
+  private filteredCategories: Category[] = [];
+  private positions: Position[] = [];
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly predictRepository: PredictRepository,
+  ) {}
 
   async onModuleInit() {
-    this.logger.log('Initializing predict bot...');
-    await this.initialize();
+    this.logger.log('Setting up predict bot...');
+    await this.initializeConfig();
+    await this.initializeOrderBuilder();
+    await this.initializeJWTAuthorization();
+    await this.getUSDTBalance();
+    this.logger.log('Predict bot setup completed successfully');
+    this.logger.log('Searching markets...');
+    await this.getAllMarkets();
+    this.logger.log('Searching categories...');
+    await this.initializeCategories();
+    await this.initializeCategoryTable();
+    this.logger.log('Checking for positions...');
+    await this.initializePositionTable();
+    // NOTE: Call it once per wallet.
+    // this.logger.log('Setting approvals...');
+    // await this.setApprovals();
+    this.logger.log('Creating market trades...');
+    await this.initializeMarketTrade();
   }
 
-  private async initialize() {
+  private async initializeConfig() {
     try {
       const errorInitializeMessage =
         'environment variable is not set. Predict bot will not be initialized.';
       // Validate environment variable
-      const baseUrl = this.configService.get<string>('PREDICT_API_BASE_URL');
-      const apiKey = this.configService.get<string>('PREDICT_API_KEY');
-      const predictAccount = this.configService.get<string>(
+      this.baseUrl = this.configService.get<string>('PREDICT_API_BASE_URL');
+      this.apiKey = this.configService.get<string>('PREDICT_API_KEY');
+      this.predictAccount = this.configService.get<string>(
         'PREDICT_ACCOUNT_ADDRESS',
       );
       const walletPrivateKey =
         this.configService.get<string>('WALLET_PRIVATE_KEY');
 
-      if (!baseUrl) {
-        this.logger.warn(`PREDICT_API_BASE_URL ${errorInitializeMessage}`);
-        return;
-      } else if (!predictAccount) {
-        this.logger.warn(`PREDICT_ACCOUNT_ADDRESS ${errorInitializeMessage}`);
-        return;
-      } else if (!apiKey) {
-        this.logger.warn(`PREDICT_API_KEY ${errorInitializeMessage}`);
-        return;
+      if (!this.baseUrl) {
+        throw new Error(`PREDICT_API_BASE_URL ${errorInitializeMessage}`);
+      } else if (!this.predictAccount) {
+        throw new Error(`PREDICT_ACCOUNT_ADDRESS ${errorInitializeMessage}`);
+      } else if (!this.apiKey) {
+        throw new Error(`PREDICT_API_KEY ${errorInitializeMessage}`);
       } else if (!walletPrivateKey) {
-        this.logger.warn(`WALLET_PRIVATE_KEY ${errorInitializeMessage}`);
-        return;
+        throw new Error(`WALLET_PRIVATE_KEY ${errorInitializeMessage}`);
       }
 
-      // Initialize the wallet with your private key
-      const signer = new Wallet(walletPrivateKey);
-      this.logger.log(`Wallet address: ${signer.address}`);
-
-      // Create a new instance of the OrderBuilder class. Note: This should only be done once per signer
-      this.logger.log('Connecting to BSC network...');
-      this.orderBuilder = await OrderBuilder.make(ChainId.BnbMainnet, signer, {
-        predictAccount,
-      });
-      if (!this.orderBuilder) {
-        throw new Error('OrderBuilder not initialized');
-      }
-      this.logger.log('OrderBuilder initialized successfully');
-      
-      try {
-        this.token = await this.getJWTAuthorization(
-          predictAccount,
-          baseUrl,
-          apiKey,
-        );
-        this.logger.log('JWT authorization successful');
-      } catch (error) {
-        this.logger.warn(
-          `Failed to get JWT authorization: ${error instanceof Error ? error.message : 'Unknown error'}. Some features requiring authentication may not work.`,
-        );
-        // Continue without token - positions won't be available but markets can still be fetched
-      }
-
-      try {
-        const usdtBalance = await this.getUSDTBalance(predictAccount);
-        this.logger.log(`Signer balance: ${usdtBalance.signerBalance} USDT`);
-        this.logger.log(
-          `Predict Account balance: ${usdtBalance.predictAccountBalance} USDT`,
-        );
-      } catch (error) {
-        this.logger.warn(
-          `Failed to get USDT balance: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-
-      try {
-        const markets = await this.getAllMarkets(baseUrl, apiKey);
-        this.logger.log(`Total Predict Markets: ${markets.data.length}`);
-      } catch (error) {
-        throw new Error(
-          `Failed to get all markets: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-
-      let categories: Category[];
-      try {
-        categories = await this.getDefaultMarkets(baseUrl, apiKey);
-      } catch (error) {
-        throw new Error(
-          `Failed to get default markets: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-      const filteredCategories = categories.filter((category) =>
-        targetSlugs.includes(category.slug),
-      );
-
-      if (categories.length > 0) {
-        console.log(
-          '================================================== Categories Table ========================================',
-        );
-        const tableData = categories.map((category) => ({
-          title: category.title,
-          slug: category.slug,
-          // startsAt: category.startsAt, // NOTE: you can display to see the date and time
-        }));
-
-        console.table(tableData);
-        for (const category of filteredCategories) {
-          if (category.markets.length > 0) {
-            console.log(`-- Markets for category: ${category.title}`);
-            // Process markets in batches to avoid rate limiting
-            const batchSize = 5;
-            const marketTable = [];
-            
-            for (let i = 0; i < category.markets.length; i += batchSize) {
-              const batch = category.markets.slice(i, i + batchSize);
-              const batchResults = await Promise.all(
-                batch.map(async (market) => {
-                  try {
-                    const stats = await this.getMarketStatistics(
-                      baseUrl,
-                      apiKey,
-                      market.id,
-                    );
-                    return {
-                      id: market.id,
-                      question: market.question,
-                      status: market.status,
-                      outcomes: market.outcomes
-                        .map((outcome) => `${outcome.name} (${outcome.status})`)
-                        .join(', '),
-                      liquidity: stats.data.totalLiquidityUsd,
-                      volume: stats.data.volumeTotalUsd,
-                    };
-                  } catch (error) {
-                    this.logger.warn(
-                      `Failed to fetch statistics for market ${market.id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                    );
-                    return {
-                      id: market.id,
-                      question: market.question,
-                      status: market.status,
-                      outcomes: market.outcomes
-                        .map((outcome) => `${outcome.name} (${outcome.status})`)
-                        .join(', '),
-                      liquidity: 'N/A',
-                      volume: 'N/A',
-                    };
-                  }
-                }),
-              );
-              marketTable.push(...batchResults);
-              
-              // Add a small delay between batches to avoid rate limiting
-              if (i + batchSize < category.markets.length) {
-                await new Promise((resolve) => setTimeout(resolve, 200));
-              }
-            }
-            
-            console.table(marketTable);
-            
-            // Calculate total liquidity for markets that have liquidity
-            const totalLiquidity = marketTable
-              .filter((market) => typeof market.liquidity === 'number')
-              .reduce((sum, market) => sum + (market.liquidity as number), 0);
-            
-            // Calculate total volume for markets that have volume
-            const totalVolume = marketTable
-              .filter((market) => typeof market.volume === 'number')
-              .reduce((sum, market) => sum + (market.volume as number), 0);
-            
-            console.log(`Total liquidity: ${totalLiquidity.toFixed(2)} USD`);
-            console.log(`Total Volume: ${totalVolume.toFixed(2)} USD`);
-          } else {
-            console.log(`-- No markets for category: ${category.title}`);
-          }
-        }
-        console.log(
-          '================================================== Categories Table ========================================',
-        );
-      } else {
-        this.logger.log('No categories found');
-      }
-
-      let positions;
-      try {
-        positions = await this.getAllPositions(baseUrl, apiKey);
-        this.logger.log(`Total Positions: ${positions.data.length}`);
-      } catch (error) {
-        this.logger.warn(
-          `Failed to get positions: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-        positions = { data: [] };
-      }
-
-      if (positions.data.length > 0) {
-        console.log(
-          '================================================== Positions Table ========================================',
-        );
-        const tableData = positions.data.map((position) => ({
-          id: position.market.id,
-          title: position.market.title,
-          shares: formatEther(position.amount),
-          usd: `$${parseFloat(position.valueUsd).toFixed(2)}`,
-        }));
-
-        console.table(tableData);
-        console.log(
-          '================================================== Positions Table ========================================',
-        );
-      } else {
-        this.logger.log('No positions found');
-      }
+      this.walletPrivateKey = walletPrivateKey.startsWith('0x')
+        ? walletPrivateKey
+        : `0x${walletPrivateKey}`;
     } catch (error) {
-      if (error instanceof Error) {
-        this.logger.error('Error message:', error.message);
-      } else {
-        this.logger.error('Failed to initialize predict bot', error);
-      }
+      throw new Error(`Failed to initialize predict bot: ${error}`);
     }
   }
 
-  private async fetchWithRetry(
-    url: string,
-    options: RequestInit,
-    retries = 3,
-    delay = 1000,
-  ): Promise<Response> {
-    for (let i = 0; i < retries; i++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+  private async initializeOrderBuilder() {
+    const signer = new Wallet(this.walletPrivateKey!);
+    this.signer = signer;
+    this.logger.log(`Signer address: ${signer.address}`);
 
-        const response = await fetch(url, {
-          ...options,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(
-            `HTTP ${response.status} ${response.statusText}`,
-          );
-        }
-
-        return response;
-      } catch (error) {
-        if (i === retries - 1) {
-          // Last retry failed
-          if (error instanceof Error && error.name === 'AbortError') {
-            throw new Error('Request timeout after 30 seconds');
-          }
-          throw error;
-        }
-
-        // Wait before retrying with exponential backoff
-        const waitTime = delay * Math.pow(2, i);
-        this.logger.warn(
-          `Fetch attempt ${i + 1} failed, retrying in ${waitTime}ms...`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, waitTime));
-      }
+    // Create a new instance of the OrderBuilder class. Note: This should only be done once per signer
+    this.logger.log('Connecting to BSC network...');
+    this.orderBuilder = await OrderBuilder.make(ChainId.BnbMainnet, signer, {
+      predictAccount: this.predictAccount!,
+    });
+    if (!this.orderBuilder) {
+      throw new Error('OrderBuilder not initialized');
     }
-
-    throw new Error('All retry attempts failed');
+    this.logger.log('OrderBuilder initialized successfully');
   }
 
-  async getJWTAuthorization(
-    signer: string,
-    baseUrl: string,
-    apiKey: string,
-  ): Promise<any> {
-    const headers = new Headers();
-    headers.append('x-api-key', apiKey);
+  private async initializeCategories() {
+    const categories = await this.getDefaultMarkets();
+    this.categories = filterAndSortCryptoUpDownCategories(categories.data);
+  }
 
-    const getRequestOptions: RequestInit = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow' as RequestRedirect,
-    };
-
-    let messageResponse: Response;
-    try {
-      messageResponse = await this.fetchWithRetry(
-        `${baseUrl}/auth/message`,
-        getRequestOptions,
-      );
-    } catch (error) {
-      if (error instanceof Error) {
-        throw new Error(`Failed to fetch auth message: ${error.message}`);
-      }
-      throw new Error('Failed to fetch auth message: Unknown error');
-    }
-
-    const responseData = (await messageResponse.json()) as AuthMessageResponse;
-    const signature = await this.orderBuilder!.signPredictAccountMessage(
-      responseData.data.message,
+  private async initializeCategoryTable() {
+    this.filteredCategories = this.categories.filter((category) =>
+      targetSlugs.includes(category.slug),
     );
 
-    const raw = JSON.stringify({
-      signer: signer,
-      signature: signature,
-      message: responseData.data.message,
-    });
-
-    const postRequestOptions: RequestInit = {
-      method: 'POST',
-      headers: headers,
-      body: raw,
-      redirect: 'follow' as RequestRedirect,
-    };
-
-    let authResponse: Response;
-    try {
-      authResponse = await this.fetchWithRetry(
-        `${baseUrl}/auth`,
-        postRequestOptions,
+    if (this.categories.length > 0) {
+      console.log(
+        '================================================== Categories Table ========================================',
       );
+      const tableData = this.categories.map((category) => ({
+        title: category.title,
+        slug: category.slug,
+        // startsAt: category.startsAt, // NOTE: you can display to see the date and time
+      }));
+
+      console.table(tableData);
+      console.log(
+        '================================================== Categories Table ========================================',
+      );
+
+      const categoriesForDisplay =
+        this.filteredCategories.length > 0
+          ? this.filteredCategories
+          : this.categories;
+
+      for (const category of categoriesForDisplay) {
+        if (category.markets.length > 0) {
+          console.log(`-- Markets for category: ${category.title} --\n`);
+          // Process markets in batches to avoid rate limiting
+          const batchSize = 5;
+          const marketTable = [];
+
+          for (let i = 0; i < category.markets.length; i += batchSize) {
+            const batch = category.markets.slice(i, i + batchSize);
+            const batchResults = await Promise.all(
+              batch.map(async (market) => {
+                try {
+                  const stats = await this.getMarketStatistics(market.id);
+                  return {
+                    id: market.id,
+                    question: market.question,
+                    status: market.status,
+                    outcomes: market.outcomes
+                      .map((outcome) => `${outcome.name} (${outcome.status})`)
+                      .join(', '),
+                    liquidity: stats.data.totalLiquidityUsd,
+                    volume: stats.data.volumeTotalUsd,
+                  };
+                } catch (error) {
+                  this.logger.warn(
+                    `Failed to fetch statistics for market ${market.id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                  );
+                  return {
+                    id: market.id,
+                    question: market.question,
+                    status: market.status,
+                    outcomes: market.outcomes
+                      .map((outcome) => `${outcome.name} (${outcome.status})`)
+                      .join(', '),
+                    liquidity: 'N/A',
+                    volume: 'N/A',
+                  };
+                }
+              }),
+            );
+            marketTable.push(...batchResults);
+
+            // Add a small delay between batches to avoid rate limiting
+            if (i + batchSize < category.markets.length) {
+              await new Promise((resolve) => setTimeout(resolve, 200));
+            }
+          }
+
+          console.log(
+            '================================================== Category Markets Table ========================================',
+          );
+          console.table(marketTable);
+
+          // Calculate total liquidity for markets that have liquidity
+          const totalLiquidity = marketTable
+            .filter((market) => typeof market.liquidity === 'number')
+            .reduce((sum, market) => sum + (market.liquidity as number), 0);
+
+          // Calculate total volume for markets that have volume
+          const totalVolume = marketTable
+            .filter((market) => typeof market.volume === 'number')
+            .reduce((sum, market) => sum + (market.volume as number), 0);
+
+          console.log(`Total liquidity: ${totalLiquidity.toFixed(2)} USD`);
+          console.log(`Total Volume: ${totalVolume.toFixed(2)} USD`);
+        } else {
+          console.log(`-- No markets for category: ${category.title}`);
+        }
+      }
+      console.log(
+        '================================================== Category Markets Table ========================================',
+      );
+    } else {
+      this.logger.log('No categories found');
+    }
+  }
+
+  private async initializePositionTable() {
+    const userPositions = await this.getAllPositions();
+    this.positions = userPositions.data;
+
+    if (this.positions.length > 0) {
+      console.log(
+        '================================================== Positions Table ========================================',
+      );
+      const tableData = this.positions.map((position) => ({
+        id: position.market.id,
+        title: position.market.title,
+        shares: formatEther(position.amount),
+        usd: `$${parseFloat(position.valueUsd).toFixed(2)}`,
+      }));
+
+      console.table(tableData);
+      console.log(
+        '================================================== Positions Table ========================================',
+      );
+    } else {
+      this.logger.log('No positions found');
+    }
+  }
+
+  private async initializeMarketTrade() {
+    const categoriesForTrade =
+      this.filteredCategories.length > 0
+        ? this.filteredCategories
+        : this.categories;
+
+    if (!categoriesForTrade.length) {
+      this.logger.warn(
+        'No categories with markets available for trade creation',
+      );
+      return;
+    }
+
+    for (const category of categoriesForTrade) {
+      if (!category.markets.length) {
+        continue;
+      }
+
+      for (const selectedMarket of category.markets) {
+        this.logger.log(`Selected market: ${selectedMarket.id}`);
+
+        const marketTrade: SaveMarketTradeInput = {
+          marketId: selectedMarket.id,
+          slug: selectedMarket.categorySlug,
+          amount: 1, // default for now; should be fetched from table in the future
+          timestamp: new Date(),
+          status: TradeStatus.BOUGHT,
+        };
+        await this.createMarketTrade(marketTrade);
+      }
+    }
+  }
+
+  // NOTE: This function is used to initialize the JWT authorization.
+  // It does not return a response but assigns value to class scoped variables.
+  // If we want to make it as a service, return a response for the authorization.
+  private async initializeJWTAuthorization() {
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+
+      const getRequestOptions: RequestInit = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow' as RequestRedirect,
+      };
+
+      const messageResponse = await fetchWithRetry(
+        `${this.baseUrl!}/auth/message`,
+        getRequestOptions,
+        this.logger,
+      );
+
+      const responseData =
+        (await messageResponse.json()) as AuthMessageResponse;
+      const signature = await this.orderBuilder!.signPredictAccountMessage(
+        responseData.data.message,
+      );
+
+      const raw = JSON.stringify({
+        signer: this.predictAccount!,
+        signature: signature,
+        message: responseData.data.message,
+      });
+
+      const postRequestOptions: RequestInit = {
+        method: 'POST',
+        headers: headers,
+        body: raw,
+        redirect: 'follow' as RequestRedirect,
+      };
+
+      const authResponse = await fetchWithRetry(
+        `${this.baseUrl!}/auth`,
+        postRequestOptions,
+        this.logger,
+      );
+
+      const authData = (await authResponse.json()) as AuthResponse;
+      this.token = authData.data.token;
+      this.logger.log('JWT authorization successful');
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to authenticate: ${error.message}`);
       }
       throw new Error('Failed to authenticate: Unknown error');
     }
-
-    const authData = (await authResponse.json()) as AuthResponse;
-    return authData.data.token;
   }
 
-  async getUSDTBalance(predictAccount: string): Promise<BalanceResponse> {
-    const signerBalanceInWei = await this.orderBuilder!.balanceOf();
+  async getUSDTBalance(): Promise<BalanceResponse> {
+    let signerBalanceInWei: bigint = 0n;
+    let predictAccountBalanceInWei: bigint = 0n;
+    try {
+      signerBalanceInWei = await this.orderBuilder!.balanceOf();
 
-    if (!this.orderBuilder!.contracts) {
-      return {
-        signerBalance: formatUnits(signerBalanceInWei, 18),
-        predictAccountBalance: '0.0',
-      };
+      if (!this.orderBuilder!.contracts) {
+        return {
+          signerBalance: formatUnits(signerBalanceInWei, 18),
+          predictAccountBalance: '0.0',
+        };
+      }
+
+      predictAccountBalanceInWei = await this.orderBuilder!.contracts[
+        'USDT'
+      ].contract.balanceOf(this.predictAccount!);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to get USDT balance: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    } finally {
+      this.logger.log(
+        `Signer balance: ${formatUnits(signerBalanceInWei ?? 0n, 18)} USDT`,
+      );
+      this.logger.log(
+        `Predict Account balance: ${formatUnits(predictAccountBalanceInWei ?? 0n, 18)} USDT`,
+      );
     }
 
-    const predictAccountBalanceInWei =
-      await this.orderBuilder!.contracts['USDT'].contract.balanceOf(
-        predictAccount,
-      );
     return {
       signerBalance: formatUnits(signerBalanceInWei, 18),
       predictAccountBalance: formatUnits(predictAccountBalanceInWei, 18),
     };
   }
 
-  async getAllMarkets(
-    baseUrl: string,
-    apiKey: string,
-  ): Promise<GetAllMarketsResponse> {
-    const headers = new Headers();
-    headers.append('x-api-key', apiKey);
+  async getAllMarkets(): Promise<GetAllMarketsResponse> {
+    let data: GetAllMarketsResponse | null = null;
 
-    const requestOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow',
-    };
-    
-    let response: Response;
     try {
-      response = await fetch(
-        `${baseUrl}/markets`,
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/markets`,
         requestOptions as RequestInit,
       );
       if (!response.ok) {
@@ -393,31 +408,40 @@ export class PredictService implements OnModuleInit {
           `Failed to get markets: HTTP ${response.status} ${response.statusText}`,
         );
       }
+
+      data = (await response.json()) as GetAllMarketsResponse;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch markets: ${error.message}`);
       }
       throw new Error('Failed to fetch markets: Unknown error');
+    } finally {
+      this.logger.log(`Total Predict Markets: ${data?.data.length ?? 0}`);
     }
-    
-    const data = (await response.json()) as GetAllMarketsResponse;
+
+    if (!data) {
+      throw new Error('Failed to retrieve markets data');
+    }
+
     return data;
   }
 
-  async getDefaultMarkets(baseUrl: string, apiKey: string): Promise<Category[]> {
-    const headers = new Headers();
-    headers.append('x-api-key', apiKey);
+  async getDefaultMarkets(): Promise<GetCategoriesByResponse> {
+    let data: GetCategoriesByResponse | null = null;
+    let categories: Category[] = [];
 
-    const requestOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow',
-    };
-
-    let response: Response;
     try {
-      response = await fetch(
-        `${baseUrl}/categories?status=OPEN`,
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/categories?status=OPEN`,
         requestOptions as RequestInit,
       );
       if (!response.ok) {
@@ -425,70 +449,38 @@ export class PredictService implements OnModuleInit {
           `Failed to get categories: HTTP ${response.status} ${response.statusText}`,
         );
       }
+
+      data = (await response.json()) as GetCategoriesByResponse;
+      categories = data.data;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch categories: ${error.message}`);
       }
       throw new Error('Failed to fetch categories: Unknown error');
-    }
-    
-    const data = (await response.json()) as GetCategoriesByResponse;
-    const defaultCategories = data.data
-      .filter((category) => category.marketVariant === MarketVariant.DEFAULT)
-      .sort((a, b) => {
-        const dateA = new Date(a.startsAt).getTime();
-        const dateB = new Date(b.startsAt).getTime();
-        return dateB - dateA; // Descending order (newest first)
-      });
-
-    return defaultCategories;
-  }
-
-  async getMarketStatistics(baseUrl: string, apiKey: string, marketId: number): Promise<GetMarketStatisticsResponse> {
-    const headers = new Headers();
-    headers.append('x-api-key', apiKey);
-
-    const requestOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow',
-    };
-
-    const response = await fetch(
-      `${baseUrl}/markets/${marketId}/stats`,
-      requestOptions as RequestInit,
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    } finally {
+      this.logger.log(`Total Default Categories: ${categories.length ?? 0}`);
     }
 
-    const data = (await response.json()) as GetMarketStatisticsResponse;
     return data;
   }
 
-  async getAllPositions(
-    baseUrl: string,
-    apiKey: string,
-  ): Promise<GetAllPositionsResponse> {
-    if (!this.token) {
-      throw new Error('JWT token not initialized. Please authenticate first.');
-    }
+  async getAllPositions(): Promise<GetAllPositionsResponse> {
+    let data: GetAllPositionsResponse | null = null;
+    let positions: Position[] = [];
 
-    const headers = new Headers();
-    headers.append('x-api-key', apiKey);
-    headers.append('Authorization', `Bearer ${this.token}`);
-
-    const requestOptions = {
-      method: 'GET',
-      headers: headers,
-      redirect: 'follow',
-    };
-    
-    let response: Response;
     try {
-      response = await fetch(
-        `${baseUrl}/positions`,
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+      headers.append('Authorization', `Bearer ${this.token!}`);
+
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/positions`,
         requestOptions as RequestInit,
       );
       if (!response.ok) {
@@ -496,14 +488,271 @@ export class PredictService implements OnModuleInit {
           `Failed to get positions: HTTP ${response.status} ${response.statusText}`,
         );
       }
+
+      data = (await response.json()) as GetAllPositionsResponse;
+      positions = data.data;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch positions: ${error.message}`);
       }
       throw new Error('Failed to fetch positions: Unknown error');
+    } finally {
+      this.logger.log(`Total Positions: ${positions.length}`);
     }
-    
-    const data = (await response.json()) as GetAllPositionsResponse;
+
+    if (positions.length === 0) {
+      this.logger.warn('No positions found');
+    }
+
     return data;
+  }
+
+  async getMarketStatistics(
+    marketId: number,
+  ): Promise<GetMarketStatisticsResponse> {
+    let data: GetMarketStatisticsResponse | null = null;
+    let statistics: MarketStatistics | null = null;
+
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/markets/${marketId}/stats`,
+        requestOptions as RequestInit,
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      data = (await response.json()) as GetMarketStatisticsResponse;
+      statistics = data.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch market statistics: ${error.message}`);
+      }
+      throw new Error('Failed to fetch market statistics: Unknown error');
+    }
+    return data;
+  }
+
+  async getMarketById(marketId: number): Promise<MarketDataResponse> {
+    let data: MarketDataResponse | null = null;
+    let market: Market | null = null;
+
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/markets/${marketId}`,
+        requestOptions as RequestInit,
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Failed to get market by id: HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      data = (await response.json()) as MarketDataResponse;
+      market = data.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch market by id: ${error.message}`);
+      }
+      throw new Error('Failed to fetch market by id: Unknown error');
+    } finally {
+      this.logger.log(`Market found, id: ${market?.id ?? 'N/A'}`);
+    }
+    return data;
+  }
+
+  async getOrderBookByMarketId(
+    marketId: number,
+  ): Promise<GetOrderBookResponse> {
+    let data: GetOrderBookResponse | null = null;
+    let orderBook: OrderBookData | null = null;
+
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+
+      const requestOptions = {
+        method: 'GET',
+        headers: headers,
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/markets/${marketId}/orderbook`,
+        requestOptions as RequestInit,
+      );
+
+      data = (await response.json()) as GetOrderBookResponse;
+      orderBook = data.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch order book: ${error.message}`);
+      }
+      throw new Error('Failed to fetch order book: Unknown error');
+    } finally {
+      this.logger.log(`Order book found, id: ${orderBook?.marketId ?? 'N/A'}`);
+    }
+    return data;
+  }
+
+  async setApprovals(): Promise<SetApprovalsResult> {
+    let result: SetApprovalsResult | null = null;
+
+    try {
+      // NOTE: You can also call `setApprovals` once per wallet.
+      result = await this.orderBuilder!.setApprovals();
+      if (!result.success) throw new Error('Failed to set approvals.');
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to set approvals: ${error.message}`);
+      }
+      throw new Error('Failed to set approvals: Unknown error');
+    }
+    return result;
+  }
+
+  async createOrder(
+    createOrderBody: CreateOrderBody,
+  ): Promise<CreateOrderResponse> {
+    let data: CreateOrderResponse | null = null;
+    let createOrderResponse: CreateOrderResponse | null = null;
+
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+      headers.append('Authorization', `Bearer ${this.token}`);
+
+      const requestOptions = {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(createOrderBody),
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/orders`,
+        requestOptions as RequestInit,
+      );
+      data = (await response.json()) as CreateOrderResponse;
+      createOrderResponse = data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to create order: ${error.message}`);
+      }
+      throw new Error('Failed to create order: Unknown error');
+    } finally {
+      this.logger.log(
+        `Order created, id: ${createOrderResponse?.data?.orderId ?? 'N/A'}`,
+      );
+    }
+
+    return data;
+  }
+
+  async createMarketTrade(market: SaveMarketTradeInput): Promise<Trade | void> {
+    const { marketId } = market;
+    const { data: book } = await this.getOrderBookByMarketId(marketId);
+    const trade = await this.predictRepository.getTradeByMarketId(marketId);
+    if (trade) {
+      this.logger.warn(`Trade already exists. Market ID: ${marketId}`);
+      return;
+    }
+
+    const marketData = await this.getMarketById(marketId);
+    // TODO: Get the outcome on chain id based on the average volume for each outcomes.
+    // For now, we are using the first outcome on chain id.
+    // In the future, we need to implement a more sophisticated algorithm to determine the outcome on chain id.
+    const outcomeOnChainId = marketData.data.outcomes[0].onChainId;
+
+    const normalizedBook = {
+      ...book,
+      asks: normalizeDepth(book.asks),
+      bids: normalizeDepth(book.bids),
+    };
+
+    const { lastPrice, pricePerShare, makerAmount, takerAmount } =
+      this.orderBuilder!.getMarketOrderAmounts(
+        {
+          side: Side.BUY,
+          quantityWei: parseEther(market.amount.toString()),
+        },
+        normalizedBook, // It's recommended to re-fetch the orderbook regularly to avoid issues
+      );
+
+    if (pricePerShare <= 0n) {
+      this.logger.warn('Price per share is less than or equal to 0');
+      return;
+    }
+
+    const order = this.orderBuilder!.buildOrder(OrderStrategy.MARKET, {
+      maker: this.signer!.address,
+      signer: this.signer!.address,
+      side: Side.BUY,
+      tokenId: outcomeOnChainId,
+      makerAmount: makerAmount,
+      takerAmount: takerAmount,
+      feeRateBps: marketData.data.feeRateBps,
+    });
+
+    const typedData = this.orderBuilder!.buildTypedData(order, {
+      isNegRisk: marketData.data.isNegRisk,
+      isYieldBearing: marketData.data.isYieldBearing,
+    });
+    const signedOrder = await this.orderBuilder!.signTypedDataOrder(typedData);
+    const hash = await this.orderBuilder!.buildTypedDataHash(typedData);
+
+    const createOrderBody: CreateOrderBody = {
+      data: {
+        pricePerShare: pricePerShare.toString(),
+        strategy: TradeStrategy.MARKET,
+        slippageBps: '200', // Only used for `MARKET` orders, in this example it's 2%
+        isFillOrKill: false,
+        order: {
+          hash,
+          salt: signedOrder.salt.toString(),
+          maker: signedOrder.maker,
+          signer: signedOrder.signer,
+          taker: signedOrder.taker ?? ZeroAddress,
+          tokenId: signedOrder.tokenId.toString(),
+          makerAmount: signedOrder.makerAmount.toString(),
+          takerAmount: signedOrder.takerAmount.toString(),
+          expiration: signedOrder.expiration.toString(),
+          nonce: signedOrder.nonce.toString(),
+          feeRateBps: signedOrder.feeRateBps.toString(),
+          side: signedOrder.side,
+          signatureType: signedOrder.signatureType,
+          signature: signedOrder.signature,
+        },
+      },
+    };
+
+    const createOrderResponse = await this.createOrder(createOrderBody);
+    if (!createOrderResponse.success) {
+      this.logger.warn(
+        `Failed to create order: ${createOrderResponse.error!._tag}`,
+      );
+      return;
+    }
+
+    market.transactionHash =
+      createOrderResponse.data?.orderHash ?? ZeroHash.toString();
+    return this.predictRepository.saveMarketTrade(market);
   }
 }

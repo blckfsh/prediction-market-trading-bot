@@ -1,4 +1,6 @@
-export enum MarketStatus {
+import { TradeStatus } from 'generated/prisma/client';
+
+enum MarketStatus {
   REGISTERED = 'REGISTERED',
   PRICE_PROPOSED = 'PRICE_PROPOSED',
   PRICE_DISPUTED = 'PRICE_DISPUTED',
@@ -7,26 +9,26 @@ export enum MarketStatus {
   RESOLVED = 'RESOLVED',
 }
 
-export enum OutcomeStatus {
+enum OutcomeStatus {
   WON = 'WON',
   LOST = 'LOST',
 }
 
-export interface Resolution {
+interface Resolution {
   name: string;
   indexSet: number;
   onChainId: string;
   status: OutcomeStatus;
 }
 
-export interface Outcome {
+interface Outcome {
   name: string;
   indexSet: number;
   onChainId: string;
   status: OutcomeStatus;
 }
 
-export interface Market {
+interface Market {
   id: number;
   imageUrl: string;
   title: string;
@@ -51,13 +53,18 @@ export interface Market {
   decimalPrecision: number;
 }
 
-export interface GetAllMarketsResponse {
+interface GetAllMarketsResponse {
   success: boolean;
   cursor: string;
   data: Market[];
 }
 
-export interface Position {
+interface MarketDataResponse {
+  success: boolean;
+  data: Market;
+}
+
+interface Position {
   id: string;
   market: Market;
   outcome: Outcome;
@@ -65,29 +72,34 @@ export interface Position {
   valueUsd: string;
 }
 
-export interface GetAllPositionsResponse {
+interface GetAllPositionsResponse {
   success: boolean;
   cursor: string;
   data: Position[];
 }
 
-export enum MarketVariant {
+enum MarketVariant {
   DEFAULT = 'DEFAULT',
   SPORTS_MATCH = 'SPORTS_MATCH',
-  CRYPTO_UP_DOWN = 'CRYPTO_UP_DOWN'
+  CRYPTO_UP_DOWN = 'CRYPTO_UP_DOWN',
 }
 
-export enum CategoryStatus {
+enum CategoryStatus {
   OPEN = 'OPEN',
-  RESOLVED = 'RESOLVED'
+  RESOLVED = 'RESOLVED',
 }
 
-export interface Tag {
+enum OrderStrategy {
+  LIMIT = 'LIMIT',
+  MARKET = 'MARKET',
+}
+
+interface Tag {
   id: string;
   name: string;
 }
 
-export interface Category {
+interface Category {
   id: number;
   slug: string;
   title: string;
@@ -103,20 +115,118 @@ export interface Category {
   tags: Tag[];
 }
 
-export interface GetCategoriesByResponse {
+interface GetCategoriesByResponse {
   success: boolean;
   cursor: string;
   data: Category[];
 }
 
-export interface MarketStatistics {
+interface MarketStatistics {
   totalLiquidityUsd: number;
   volumeTotalUsd: number;
   volume24hUsd: number;
 }
 
-export interface GetMarketStatisticsResponse {
+interface GetMarketStatisticsResponse {
   success: boolean;
-  data: MarketStatistics
+  data: MarketStatistics;
 }
 
+interface OrderBookData {
+  marketId: number;
+  updateTimestampMs: number;
+  asks: number[][];
+  bids: number[][];
+}
+
+interface GetOrderBookResponse {
+  success: boolean;
+  data: OrderBookData;
+}
+
+interface CreateOrderData {
+  code: string;
+  orderId: string;
+  orderHash: string;
+}
+
+interface CreateOrderError {
+  _tag: string;
+  message: string;
+}
+
+enum TradeStrategy {
+  LIMIT = 'LIMIT',
+  MARKET = 'MARKET',
+}
+
+interface CreateOrderBody {
+  data: {
+    pricePerShare: string;
+    strategy: TradeStrategy;
+    slippageBps: string;
+    isFillOrKill: boolean;
+    order: {
+      hash: string;
+      salt: string;
+      maker: string;
+      signer: string;
+      taker: string;
+      tokenId: string;
+      makerAmount: string;
+      takerAmount: string;
+      expiration: string;
+      nonce: string;
+      feeRateBps: string;
+      side: number;
+      signatureType: number;
+      signature: string;
+    };
+  };
+}
+
+interface CreateOrderResponse {
+  success: boolean;
+  data?: CreateOrderData;
+  error?: CreateOrderError;
+}
+
+interface SaveMarketTradeInput {
+  marketId: number;
+  slug: string;
+  amount: number;
+  transactionHash?: string;
+  timestamp: Date;
+  status: TradeStatus;
+}
+
+export {
+  MarketStatus,
+  OutcomeStatus,
+  MarketVariant,
+  CategoryStatus,
+  OrderStrategy,
+  TradeStrategy,
+};
+
+export type {
+  Resolution,
+  Outcome,
+  Market,
+  GetAllMarketsResponse,
+  MarketDataResponse,
+  Position,
+  GetAllPositionsResponse,
+  Tag,
+  Category,
+  GetCategoriesByResponse,
+  MarketStatistics,
+  GetMarketStatisticsResponse,
+  OrderBookData,
+  GetOrderBookResponse,
+  CreateOrderData,
+  CreateOrderError,
+  CreateOrderBody,
+  CreateOrderResponse,
+  SaveMarketTradeInput,
+};

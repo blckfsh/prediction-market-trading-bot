@@ -33,6 +33,10 @@ export class SchemaType implements SchemaDef {
                     name: "amount",
                     type: "Int"
                 },
+                transactionHash: {
+                    name: "transactionHash",
+                    type: "String"
+                },
                 timestamp: {
                     name: "timestamp",
                     type: "DateTime"

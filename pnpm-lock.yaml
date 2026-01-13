@@ -21,8 +21,8 @@ importers:
         specifier: ^11.0.1
         version: 11.1.9(@nestjs/common@11.1.9(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@11.1.9)
       '@predictdotfun/sdk':
-        specifier: ^1.2.4
-        version: 1.2.4(ethers@6.16.0)
+        specifier: ^1.2.5
+        version: 1.2.5(ethers@6.16.0)
       '@prisma/adapter-pg':
         specifier: ^7.2.0
         version: 7.2.0
@@ -925,8 +925,8 @@ packages:
     resolution: {integrity: sha512-QNqXyfVS2wm9hweSYD2O7F0G06uurj9kZ96TRQE5Y9hU7+tgdZwIkbAKc5Ocy1HxEY2kuDQa6cQ1WRs/O5LFKA==}
     engines: {node: ^12.20.0 || ^14.18.0 || >=16.0.0}
 
-  '@predictdotfun/sdk@1.2.4':
-    resolution: {integrity: sha512-qyHvvUJx7wHbNQWRk/qqdDx27NaopdSY4wbX9dz0hHoKrT1awmFdzkLESsXgp2VEo+2xnSvi/exR/izkgyioDw==}
+  '@predictdotfun/sdk@1.2.5':
+    resolution: {integrity: sha512-mZV2Ik/dQU/Y4F+M2/ISugl3pV8a6T5TZyVCa75kMQRxalD3SwC58KNfxN7FwWUcWx5nN4ZkxMkL7x0oEjP8nA==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0, yarn: '>=1.22.11'}
     peerDependencies:
       ethers: ^6.15.0
@@ -4994,7 +4994,7 @@ snapshots:
 
   '@pkgr/core@0.2.9': {}
 
-  '@predictdotfun/sdk@1.2.4(ethers@6.16.0)':
+  '@predictdotfun/sdk@1.2.5(ethers@6.16.0)':
     dependencies:
       ethers: 6.16.0
       ethers-multicall-provider: 6.5.0(ethers@6.16.0)

@@ -20,10 +20,11 @@ enum TradeStatus {
 }
 
 model Trade {
-  id          Int     @default(autoincrement()) @id
-  marketId    Int
-  slug        String
-  amount      Int
-  timestamp   DateTime
-  status      TradeStatus
+  id               Int     @default(autoincrement()) @id
+  marketId         Int
+  slug             String
+  amount           Int
+  transactionHash  String
+  timestamp        DateTime
+  status           TradeStatus
 }
