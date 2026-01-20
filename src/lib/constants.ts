@@ -1,4 +1,4 @@
-// @TODO: put these values in a database table
+// TODO: Check if this is relevant. Perhaps its not needed.
 export const targetSlugs = [
   'what-price-will-bitcoin-hit-before-feb-2026',
   'what-price-will-eth-hit-before-feb-2026',

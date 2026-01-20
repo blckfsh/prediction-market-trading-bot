@@ -8,6 +8,11 @@
 import { schema as $schema, type SchemaType as $Schema } from "./schema";
 import { type ModelResult as $ModelResult } from "@zenstackhq/orm";
 export type Trade = $ModelResult<$Schema, "Trade">;
+export type TradeConfig = $ModelResult<$Schema, "TradeConfig">;
 export type WalletApproval = $ModelResult<$Schema, "WalletApproval">;
 export const TradeStatus = $schema.enums.TradeStatus.values;
 export type TradeStatus = (typeof TradeStatus)[keyof typeof TradeStatus];
+export const TradeOptions = $schema.enums.TradeOptions.values;
+export type TradeOptions = (typeof TradeOptions)[keyof typeof TradeOptions];
+export const MarketVariant = $schema.enums.MarketVariant.values;
+export type MarketVariant = (typeof MarketVariant)[keyof typeof MarketVariant];

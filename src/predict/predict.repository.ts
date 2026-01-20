@@ -1,7 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaService } from 'src/prisma/prisma.service';
-import { SaveMarketTradeInput } from './types/market.types';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ZeroHash } from 'ethers';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { SaveMarketTradeInput } from 'src/predict/types/market.types';
+import { MarketVariant, TradeOptions } from 'lib/zenstack/models';
 
 @Injectable()
 export class PredictRepository {
@@ -17,6 +22,16 @@ export class PredictRepository {
     return this.prisma.walletApproval.findFirst({
       where: { walletAddress },
     });
+  }
+
+  async getTradeConfigByMarketVariant(marketVariant: MarketVariant) {
+    return this.prisma.tradeConfig.findFirst({
+      where: { marketVariant },
+    });
+  }
+
+  async getAllTradeConfigs() {
+    return this.prisma.tradeConfig.findMany();
   }
 
   async saveMarketTrade({
@@ -45,6 +60,39 @@ export class PredictRepository {
         walletAddress,
         timestamp: new Date(),
       },
+    });
+  }
+
+  async saveTradeConfig(
+    marketVariant: MarketVariant,
+    options: TradeOptions,
+    amount: number,
+  ) {
+    const tradeConfig = await this.getTradeConfigByMarketVariant(marketVariant);
+    if (tradeConfig) {
+      throw new ConflictException(
+        `Trade config already exists for marketVariant: ${marketVariant}`,
+      );
+    }
+    return this.prisma.tradeConfig.create({
+      data: {
+        marketVariant,
+        options,
+        amount,
+      },
+    });
+  }
+
+  async updateTradeConfigAmount(marketVariant: MarketVariant, amount: number) {
+    const tradeConfig = await this.getTradeConfigByMarketVariant(marketVariant);
+    if (!tradeConfig) {
+      throw new NotFoundException(
+        `Trade config not found for marketVariant: ${marketVariant}`,
+      );
+    }
+    return this.prisma.tradeConfig.update({
+      where: { id: tradeConfig.id },
+      data: { amount },
     });
   }
 }

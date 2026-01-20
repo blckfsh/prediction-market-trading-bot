@@ -51,6 +51,34 @@ export class SchemaType implements SchemaDef {
                 id: { type: "Int" }
             }
         },
+        TradeConfig: {
+            name: "TradeConfig",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                marketVariant: {
+                    name: "marketVariant",
+                    type: "MarketVariant"
+                },
+                options: {
+                    name: "options",
+                    type: "TradeOptions"
+                },
+                amount: {
+                    name: "amount",
+                    type: "Int"
+                }
+            },
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" }
+            }
+        },
         WalletApproval: {
             name: "WalletApproval",
             fields: {
@@ -81,6 +109,19 @@ export class SchemaType implements SchemaDef {
             values: {
                 BOUGHT: "BOUGHT",
                 SOLD: "SOLD"
+            }
+        },
+        TradeOptions: {
+            values: {
+                BUY: "BUY",
+                SELL: "SELL"
+            }
+        },
+        MarketVariant: {
+            values: {
+                DEFAULT: "DEFAULT",
+                SPORTS_MATCH: "SPORTS_MATCH",
+                CRYPTO_UP_DOWN: "CRYPTO_UP_DOWN"
             }
         }
     } as const;

@@ -1,4 +1,4 @@
-import { PredictService } from './predict.service';
+import { PredictService } from './bot.service';
 import { ConfigService } from '@nestjs/config';
 import { PredictRepository } from './predict.repository';
 import {

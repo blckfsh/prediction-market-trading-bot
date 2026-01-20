@@ -19,6 +19,17 @@ enum TradeStatus {
   SOLD
 }
 
+enum TradeOptions {
+  BUY
+  SELL
+}
+
+enum MarketVariant {
+  DEFAULT
+  SPORTS_MATCH
+  CRYPTO_UP_DOWN
+}
+
 model Trade {
   id               Int     @default(autoincrement()) @id
   marketId         Int
@@ -27,6 +38,13 @@ model Trade {
   transactionHash  String
   timestamp        DateTime
   status           TradeStatus
+}
+
+model TradeConfig {
+  id       Int          @id @default(autoincrement())
+  marketVariant MarketVariant
+  options  TradeOptions
+  amount   Int
 }
 
 model WalletApproval {
