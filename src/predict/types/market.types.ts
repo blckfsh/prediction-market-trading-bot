@@ -18,14 +18,14 @@ interface Resolution {
   name: string;
   indexSet: number;
   onChainId: string;
-  status: OutcomeStatus;
+  status: OutcomeStatus | null;
 }
 
 interface Outcome {
   name: string;
   indexSet: number;
   onChainId: string;
-  status: OutcomeStatus;
+  status: OutcomeStatus | null;
 }
 
 interface Market {

@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  Logger,
+  ConsoleLogger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   formatEther,
@@ -41,7 +46,7 @@ import {
 import { PredictRepository } from 'src/predict/predict.repository';
 import { targetSlugs } from 'src/lib/constants';
 import { fetchWithRetry } from 'src/lib/utils/http';
-import { normalizeDepth } from 'src/lib/utils/orderbook';
+import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
 import { filterAndSortCryptoUpDownCategories } from 'src/lib/utils/categories';
 
 @Injectable()
@@ -178,7 +183,10 @@ export class PredictService implements OnModuleInit {
                     question: market.question,
                     status: market.status,
                     outcomes: market.outcomes
-                      .map((outcome) => `${outcome.name} (${outcome.status})`)
+                      .map((outcome) => {
+                        const outcomeStatus = outcome.status ?? 'PENDING';
+                        return `${outcome.name} (${outcomeStatus})`;
+                      })
                       .join(', '),
                     liquidity: stats.data.totalLiquidityUsd,
                     volume: stats.data.volumeTotalUsd,
@@ -192,7 +200,10 @@ export class PredictService implements OnModuleInit {
                     question: market.question,
                     status: market.status,
                     outcomes: market.outcomes
-                      .map((outcome) => `${outcome.name} (${outcome.status})`)
+                      .map((outcome) => {
+                        const outcomeStatus = outcome.status ?? 'PENDING';
+                        return `${outcome.name} (${outcomeStatus})`;
+                      })
                       .join(', '),
                     liquidity: 'N/A',
                     volume: 'N/A',
@@ -710,10 +721,25 @@ export class PredictService implements OnModuleInit {
     }
 
     const marketData = await this.getMarketById(marketId);
-    // TODO: Get the outcome on chain id based on the average volume for each outcomes.
-    // For now, we are using the first outcome on chain id.
-    // In the future, we need to implement a more sophisticated algorithm to determine the outcome on chain id.
-    const outcomeOnChainId = marketData.data.outcomes[0].onChainId;
+
+    // NOTE: Get the average buy price of the yes and no outcomes.
+    const yesBuyPrice = book.asks.length > 0 ? book.asks[0][0] : 0;
+    const noBuyPrice = getComplement(
+      book.bids.length > 0 ? book.bids[0][0] : 0,
+      marketData.data.decimalPrecision,
+    );
+
+    this.logger.log('Buy - Yes Price: ', yesBuyPrice);
+    this.logger.log('Buy - No Price: ', noBuyPrice);
+
+    if (yesBuyPrice === noBuyPrice) {
+      this.logger.warn('Yes and no buy prices are equal');
+      return;
+    }
+
+    const chosenOutcomeIndex: number = yesBuyPrice < noBuyPrice ? 0 : 1;
+    const outcomeOnChainId =
+      marketData.data.outcomes[chosenOutcomeIndex].onChainId;
 
     const normalizedBook = {
       ...book,
