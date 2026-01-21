@@ -39,7 +39,6 @@ import {
   AuthResponse,
 } from 'src/predict/types/auth.types';
 import { PredictRepository } from 'src/predict/predict.repository';
-import { targetSlugs } from 'src/lib/constants';
 import { fetchWithRetry } from 'src/lib/utils/http';
 import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
 import { filterAndSortCryptoUpDownCategories } from 'src/lib/utils/categories';
@@ -55,7 +54,6 @@ export class BotService implements OnModuleInit {
   private orderBuilder: OrderBuilder | null = null;
   private token: string | null = null;
   private categories: Category[] = [];
-  private filteredCategories: Category[] = [];
   private positions: Position[] = [];
   private tradeConfigsByMarketVariant = new Map<MarketVariant, TradeConfig>();
 
@@ -154,11 +152,6 @@ export class BotService implements OnModuleInit {
   }
 
   private async initializeCategoryTable() {
-    // TODO: Check if this is relevant. Perhaps its not needed.
-    this.filteredCategories = this.categories.filter((category) =>
-      targetSlugs.includes(category.slug),
-    );
-
     if (this.categories.length > 0) {
       console.log(
         '================================================== Categories Table ========================================',
@@ -174,12 +167,10 @@ export class BotService implements OnModuleInit {
         '================================================== Categories Table ========================================',
       );
 
-      const categoriesForDisplay =
-        this.filteredCategories.length > 0
-          ? this.filteredCategories
-          : this.categories;
-
-      for (const category of categoriesForDisplay) {
+      console.log(
+        '================================================== Category Markets Table ========================================',
+      );
+      for (const category of this.categories) {
         if (category.markets.length > 0) {
           console.log(`-- Markets for category: ${category.title} --\n`);
           // Process markets in batches to avoid rate limiting
@@ -235,23 +226,7 @@ export class BotService implements OnModuleInit {
             }
           }
 
-          console.log(
-            '================================================== Category Markets Table ========================================',
-          );
           console.table(marketTable);
-
-          // Calculate total liquidity for markets that have liquidity
-          const totalLiquidity = marketTable
-            .filter((market) => typeof market.liquidity === 'number')
-            .reduce((sum, market) => sum + (market.liquidity as number), 0);
-
-          // Calculate total volume for markets that have volume
-          const totalVolume = marketTable
-            .filter((market) => typeof market.volume === 'number')
-            .reduce((sum, market) => sum + (market.volume as number), 0);
-
-          console.log(`Total liquidity: ${totalLiquidity.toFixed(2)} USD`);
-          console.log(`Total Volume: ${totalVolume.toFixed(2)} USD`);
         } else {
           console.log(`-- No markets for category: ${category.title}`);
         }
@@ -289,19 +264,14 @@ export class BotService implements OnModuleInit {
   }
 
   private async initializeMarketTrade() {
-    const categoriesForTrade =
-      this.filteredCategories.length > 0
-        ? this.filteredCategories
-        : this.categories;
-
-    if (!categoriesForTrade.length) {
+    if (!this.categories.length) {
       this.logger.warn(
         'No categories with markets available for trade creation',
       );
       return;
     }
 
-    for (const category of categoriesForTrade) {
+    for (const category of this.categories) {
       if (!category.markets.length) {
         continue;
       }
@@ -778,6 +748,7 @@ export class BotService implements OnModuleInit {
     }
 
     const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 0 : 1;
+    this.logger.log(`YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`);
     const outcomeOnChainId =
       marketData.data.outcomes[chosenOutcomeIndex].onChainId;
 
@@ -796,10 +767,11 @@ export class BotService implements OnModuleInit {
         normalizedBook, // It's recommended to re-fetch the orderbook regularly to avoid issues
       );
 
-    if (pricePerShare <= 0n) {
-      this.logger.warn('Price per share is less than or equal to 0');
-      return;
-    }
+    // NOTE: Disable this to buy tokens with price per share less than or equal to 0
+    // if (pricePerShare <= 0n) {
+    //   this.logger.warn('Price per share is less than or equal to 0');
+    //   return;
+    // }
 
     const order = this.orderBuilder!.buildOrder(OrderStrategy.MARKET, {
       maker: this.signer!.address,
