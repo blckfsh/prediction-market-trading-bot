@@ -7,13 +7,15 @@ import {
   Patch,
   ParseEnumPipe,
   Post,
+  UseGuards,
 } from '@nestjs/common';
 import { PredictService } from 'src/predict/predict.service';
-import { MarketVariant, TradeOptions } from 'lib/zenstack/models';
+import { MarketVariant } from 'lib/zenstack/models';
 import {
   CreateTradeConfigBody,
   UpdateTradeConfigAmountBody,
 } from 'src/predict/dto/trade-config.dto';
+import { AuthGuard } from 'src/common/guard/auth.guard';
 
 @Controller('predict')
 export class PredictController {
@@ -35,6 +37,7 @@ export class PredictController {
   }
 
   @Post('trade-config')
+  @UseGuards(AuthGuard)
   async createTradeConfig(@Body() body: CreateTradeConfigBody) {
     const { marketVariant, options, amount } = body;
     return this.predictService.createTradeConfig(
@@ -45,6 +48,7 @@ export class PredictController {
   }
 
   @Patch('trade-config/:marketVariant/amount')
+  @UseGuards(AuthGuard)
   async updateTradeConfigAmount(
     @Param('marketVariant', new ParseEnumPipe(MarketVariant))
     marketVariant: MarketVariant,
