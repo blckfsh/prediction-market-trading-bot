@@ -1,6 +1,7 @@
 import { BotService } from './bot.service';
 import { ConfigService } from '@nestjs/config';
 import { PredictRepository } from './predict.repository';
+import { WebsocketService } from './websocket.service';
 import {
   GetAllMarketsResponse,
   GetCategoriesByResponse,
@@ -42,6 +43,7 @@ describe('BotService', () => {
   let service: BotService;
   let configService: ConfigService;
   let predictRepository: PredictRepository;
+  let websocketService: WebsocketService;
 
   beforeEach(() => {
     // Minimal mocks for dependencies
@@ -57,7 +59,12 @@ describe('BotService', () => {
     (predictRepository as any).getWalletApprovalByWalletAddress = jest.fn();
     (predictRepository as any).saveWalletApprovals = jest.fn();
 
-    service = new BotService(configService, predictRepository);
+    websocketService = {
+      connect: jest.fn(),
+      subscribe: jest.fn(),
+    } as unknown as WebsocketService;
+
+    service = new BotService(configService, predictRepository, websocketService);
 
     // Inject required config values directly
     (service as any).baseUrl = 'https://api.example.com';

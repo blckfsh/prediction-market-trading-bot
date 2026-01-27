@@ -31,6 +31,10 @@
 $ pnpm install
 ```
 
+## Environment variables
+
+WebSocket env variables are documented here: `docs/predict-websocket-env.md`.
+
 ## Compile and run the project
 
 ```bash

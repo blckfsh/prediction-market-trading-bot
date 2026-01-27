@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   formatEther,
@@ -41,10 +41,30 @@ import {
 import { PredictRepository } from 'src/predict/predict.repository';
 import { fetchWithRetry } from 'src/lib/utils/http';
 import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
-import { filterAndSortCryptoUpDownCategories } from 'src/lib/utils/categories';
+import {
+  getTopicLabel as getTopicLabelHelper,
+  getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
+  isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
+  isBotEnabled,
+  isWebsocketEnabled,
+  filterAndSortCryptoUpDownCategories,
+  refreshPositionsTable as refreshPositionsTableHelper,
+  refreshCategoriesAndSubscribe as refreshCategoriesAndSubscribeHelper,
+  startCategoryRefreshLoop as startCategoryRefreshLoopHelper,
+  startPositionsRefreshLoop as startPositionsRefreshLoopHelper,
+} from 'src/lib/helpers/bot';
+import { WebsocketService } from 'src/predict/websocket.service';
+import {
+  AssetPriceUpdate,
+  Channel,
+  PredictOrderbook,
+  PredictWalletEvents,
+  RealtimeTopic,
+} from 'src/predict/types/websocket.types';
+import { AUTO_TRADE_INTERVAL_MS, SLIPPAGE_BPS } from 'src/lib/constants';
 
 @Injectable()
-export class BotService implements OnModuleInit {
+export class BotService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BotService.name);
   private baseUrl: string | undefined;
   private apiKey: string | undefined;
@@ -56,14 +76,30 @@ export class BotService implements OnModuleInit {
   private categories: Category[] = [];
   private positions: Position[] = [];
   private tradeConfigsByMarketVariant = new Map<MarketVariant, TradeConfig>();
+  private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
+  private readonly subscribedOrderbooks = new Set<number>();
+  private readonly subscribedPriceFeeds = new Set<number>();
+  private readonly lastRealtimeLogAt = new Map<string, number>();
+  private readonly lastRealtimeTimestamp = new Map<string, number>();
+  private readonly marketTradeInFlight = new Set<number>();
+  private readonly marketTradeLastAttemptAt = new Map<number, number>();
+  private categoryRefreshState: { intervalId: NodeJS.Timeout | null; inFlight: boolean } = {
+    intervalId: null,
+    inFlight: false,
+  };
+  private positionsRefreshState: { intervalId: NodeJS.Timeout | null; inFlight: boolean } = {
+    intervalId: null,
+    inFlight: false,
+  };
 
   constructor(
     private readonly configService: ConfigService,
     private readonly predictRepository: PredictRepository,
+    private readonly predictRealtimeService: WebsocketService,
   ) {}
 
   async onModuleInit() {
-    if (!this.isBotEnabled()) {
+    if (!isBotEnabled(this.configService)) {
       this.logger.warn(
         'Predict bot is disabled via PREDICT_BOT_ENABLED. Skipping startup.',
       );
@@ -79,24 +115,28 @@ export class BotService implements OnModuleInit {
     await this.getAllMarkets();
     this.logger.log('Searching categories...');
     await this.initializeCategories();
+    this.logger.log('Loading trade configs...');
+    await this.initializeTradeConfigs();
     await this.initializeCategoryTable();
     this.logger.log('Checking for positions...');
     await this.initializePositionTable();
-    this.logger.log('Loading trade configs...');
-    await this.initializeTradeConfigs();
     this.logger.log('Setting approvals...');
     await this.setApprovals();
-    this.logger.log('Creating market trades...');
-    await this.initializeMarketTrade();
+    this.logger.log('Initializing wallet events subscriptions...');
+    await this.initializeWalletEventsSubscriptions();
+    this.startCategoryRefreshLoop();
+    this.startPositionsRefreshLoop();
   }
 
-  private isBotEnabled(): boolean {
-    const raw = this.configService.get<string>('PREDICT_BOT_ENABLED');
-    if (raw === undefined || raw === null || raw.trim() === '') {
-      return true;
+  onModuleDestroy() {
+    if (this.categoryRefreshState.intervalId) {
+      clearInterval(this.categoryRefreshState.intervalId);
+      this.categoryRefreshState.intervalId = null;
     }
-    const normalized = raw.trim().toLowerCase();
-    return normalized === 'true' || normalized === '1' || normalized === 'yes';
+    if (this.positionsRefreshState.intervalId) {
+      clearInterval(this.positionsRefreshState.intervalId);
+      this.positionsRefreshState.intervalId = null;
+    }
   }
 
   private async initializeConfig() {
@@ -151,6 +191,46 @@ export class BotService implements OnModuleInit {
     this.categories = filterAndSortCryptoUpDownCategories(categories.data);
   }
 
+  private startCategoryRefreshLoop(): void {
+    this.categoryRefreshState.intervalId = startCategoryRefreshLoopHelper(
+      { configService: this.configService, logger: this.logger },
+      this.categoryRefreshState,
+      () => this.refreshCategoriesAndSubscribe(),
+    );
+  }
+
+  private startPositionsRefreshLoop(): void {
+    this.positionsRefreshState.intervalId = startPositionsRefreshLoopHelper(
+      { configService: this.configService, logger: this.logger },
+      this.positionsRefreshState,
+      () => this.refreshPositionsTable(),
+    );
+  }
+
+  private async refreshPositionsTable(): Promise<void> {
+    await refreshPositionsTableHelper(
+      { configService: this.configService, logger: this.logger },
+      this.positionsRefreshState,
+      () => this.initializePositionTable(),
+    );
+  }
+
+  private async refreshCategoriesAndSubscribe(): Promise<void> {
+    await refreshCategoriesAndSubscribeHelper(
+      { configService: this.configService, logger: this.logger },
+      this.categoryRefreshState,
+      {
+        list: this.categories,
+        set: (next) => {
+          this.categories = next;
+        },
+      },
+      () => this.getDefaultMarkets(),
+      (data) => filterAndSortCryptoUpDownCategories(data),
+      (marketId) => this.subscribeToOrderbook(marketId),
+    );
+  }
+
   private async initializeCategoryTable() {
     if (this.categories.length > 0) {
       console.log(
@@ -173,6 +253,9 @@ export class BotService implements OnModuleInit {
       for (const category of this.categories) {
         if (category.markets.length > 0) {
           console.log(`-- Markets for category: ${category.title} --\n`);
+          for (const market of category.markets) {
+            this.subscribeToOrderbook(market.id);
+          }
           // Process markets in batches to avoid rate limiting
           const batchSize = 5;
           const marketTable = [];
@@ -263,41 +346,6 @@ export class BotService implements OnModuleInit {
     }
   }
 
-  private async initializeMarketTrade() {
-    if (!this.categories.length) {
-      this.logger.warn(
-        'No categories with markets available for trade creation',
-      );
-      return;
-    }
-
-    for (const category of this.categories) {
-      if (!category.markets.length) {
-        continue;
-      }
-
-      let counter = 0;
-      for (const selectedMarket of category.markets) {
-        if (counter >= 1) break;
-        counter++;
-        this.logger.log(`Selected market: ${selectedMarket.id}`);
-
-        const tradeConfig =
-          this.tradeConfigsByMarketVariant.get(category.marketVariant) ?? null;
-        const tradeAmount = tradeConfig?.amount ?? 1;
-
-        const marketTrade: SaveMarketTradeInput = {
-          marketId: selectedMarket.id,
-          slug: selectedMarket.categorySlug,
-          amount: tradeAmount,
-          timestamp: new Date(),
-          status: TradeStatus.BOUGHT,
-        };
-        await this.createMarketTrade(marketTrade);
-      }
-    }
-  }
-
   // NOTE: This function is used to initialize the JWT authorization.
   // It does not return a response but assigns value to class scoped variables.
   // If we want to make it as a service, return a response for the authorization.
@@ -352,6 +400,269 @@ export class BotService implements OnModuleInit {
       }
       throw new Error('Failed to authenticate: Unknown error');
     }
+  }
+
+  private async initializeWalletEventsSubscriptions() {
+    if (!isWebsocketEnabled(this.configService)) {
+      this.logger.log(
+        'Predict websocket is disabled via PREDICT_WS_ENABLED. Skipping realtime subscriptions.',
+      );
+      return;
+    }
+
+    this.predictRealtimeService.connect();
+
+    const shouldSubscribeWalletEvents =
+      this.configService.get<string>('PREDICT_WS_WALLET_EVENTS')?.toLowerCase() ===
+      'true';
+
+    if (shouldSubscribeWalletEvents && this.token) {
+      this.subscribeToRealtimeTopic({
+        name: RealtimeTopic.PredictWalletEvents,
+        jwt: this.token,
+      });
+      return;
+    }
+
+    this.logger.log(
+      'Predict websocket enabled. Call subscribeToOrderbook or subscribeToPriceFeed with market data.',
+    );
+  }
+
+  private subscribeToRealtimeTopic(topic: Channel) {
+    const subscription = this.predictRealtimeService.subscribe(
+      topic,
+      ({ data, err }) => {
+        if (err) {
+          this.logger.warn(
+            `Predict websocket error: ${err.code} ${err.message ?? ''}`.trim(),
+          );
+          return;
+        }
+        this.logRealtimeEvent(topic, data);
+      },
+    );
+    this.logger.log(
+      `Predict websocket subscribed: ${getTopicLabelHelper(topic)}`,
+    );
+    this.realtimeSubscriptions.push(subscription);
+  }
+
+  private subscribeToOrderbook(marketId: number): void {
+    if (!isWebsocketEnabled(this.configService) || this.subscribedOrderbooks.has(marketId)) {
+      return;
+    }
+    this.subscribedOrderbooks.add(marketId);
+    this.subscribeToRealtimeTopic({
+      name: RealtimeTopic.PredictOrderbook,
+      marketId,
+    });
+  }
+
+  // TODO: Implement this function to subscribe to a price feed.
+  // I don't know how to get the price feed id LOL.
+  private subscribeToPriceFeed(priceFeedId: number): void {
+    if (!isWebsocketEnabled(this.configService) || this.subscribedPriceFeeds.has(priceFeedId)) {
+      return;
+    }
+    this.subscribedPriceFeeds.add(priceFeedId);
+    this.subscribeToRealtimeTopic({
+      name: RealtimeTopic.AssetPriceUpdate,
+      priceFeedId,
+    });
+  }
+
+  private logRealtimeEvent(topic: Channel, data: unknown): void {
+    if (!this.shouldLogRealtimeEvent(topic, data)) {
+      return;
+    }
+    const isObjectPayload = data !== null && typeof data === 'object';
+    if (topic.name === RealtimeTopic.PredictOrderbook && isObjectPayload) {
+      const orderbook = data as PredictOrderbook;
+
+      console.log(
+        '================================================== Predict Orderbook ========================================',
+      );
+      console.table([
+        {
+        marketId: orderbook.marketId ?? topic.marketId,
+          updateTimestampMs: orderbook.updateTimestampMs ?? 'N/A',
+          orderCount: orderbook.orderCount ?? 'N/A',
+          asks: Array.isArray(orderbook.asks) ? orderbook.asks.length : 'N/A',
+          bids: Array.isArray(orderbook.bids) ? orderbook.bids.length : 'N/A',
+        },
+      ]);
+      console.log(
+        '================================================== Predict Orderbook ========================================',
+      );
+      if (orderbook.marketId !== undefined) {
+        // start async work and don't wait for it to complete
+        void this.createMarketTradeFromOrderbook(orderbook.marketId);
+      }
+      return;
+    }
+
+    if (topic.name === RealtimeTopic.AssetPriceUpdate && isObjectPayload) {
+      const priceUpdate = data as AssetPriceUpdate;
+
+      console.log(
+        '================================================== Asset Price Update ========================================',
+      );
+      console.table([
+        {
+          priceFeedId: topic.priceFeedId,
+          price: priceUpdate.price ?? 'N/A',
+          publishTime: priceUpdate.publishTime ?? 'N/A',
+          timestamp: priceUpdate.timestamp ?? 'N/A',
+        },
+      ]);
+      console.log(
+        '================================================== Asset Price Update ========================================',
+      );
+      return;
+    }
+
+    if (topic.name === RealtimeTopic.PredictWalletEvents && isObjectPayload) {
+      const walletEvent = data as PredictWalletEvents;
+
+      console.log(
+        '================================================== Predict Wallet Event ========================================',
+      );
+      const reason = 'reason' in walletEvent ? walletEvent.reason : undefined;
+      const kind = 'kind' in walletEvent ? walletEvent.kind : undefined;
+      console.table([
+        {
+          type: walletEvent.type ?? 'N/A',
+          orderId: walletEvent.orderId ?? 'N/A',
+          timestamp: walletEvent.timestamp ?? 'N/A',
+          outcome: walletEvent.details?.outcome ?? 'N/A',
+          quoteType: walletEvent.details?.quoteType ?? 'N/A',
+          quantity: walletEvent.details?.quantity ?? 'N/A',
+          price: walletEvent.details?.price ?? 'N/A',
+          strategyType: walletEvent.details?.strategyType ?? 'N/A',
+          categorySlug: walletEvent.details?.categorySlug ?? 'N/A',
+          reason: reason ?? 'N/A',
+          kind: kind ?? 'N/A',
+        },
+      ]);
+      console.log(
+        '================================================== Predict Wallet Event ========================================',
+      );
+      return;
+    }
+
+    console.log('====================== Predict WS Event ======================');
+    console.table([
+      { topic: getTopicLabelHelper(topic), data: JSON.stringify(data) },
+    ]);
+    console.log('====================== Predict WS Event ======================');
+  }
+
+  private shouldLogRealtimeEvent(topic: Channel, data: unknown): boolean {
+    const key = getTopicLabelHelper(topic);
+    const now = Date.now();
+    const minIntervalMs = Number(
+      this.configService.get<string>('PREDICT_WS_LOG_INTERVAL_MS') ?? AUTO_TRADE_INTERVAL_MS,
+    );
+    if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
+      return true;
+    }
+
+    if (topic.name === RealtimeTopic.PredictOrderbook && data && typeof data === 'object') {
+      const orderbook = data as PredictOrderbook;
+      const lastTimestamp = this.lastRealtimeTimestamp.get(key);
+      if (orderbook.updateTimestampMs !== undefined) {
+        if (lastTimestamp === orderbook.updateTimestampMs) {
+          return false;
+        }
+        this.lastRealtimeTimestamp.set(key, orderbook.updateTimestampMs); // map (key => value) pair
+      }
+    }
+
+    const lastLoggedAt = this.lastRealtimeLogAt.get(key) ?? 0;
+    if (now - lastLoggedAt < minIntervalMs) {
+      return false;
+    }
+
+    this.lastRealtimeLogAt.set(key, now); // update mapping
+    return true;
+  }
+
+  private async createMarketTradeFromOrderbook(marketId: number): Promise<void> {
+    if (!isWebsocketAutoTradeEnabledHelper(this.configService)) {
+      return;
+    }
+
+    // TODO: check if NestJS has a better way to handle concurrent requests.
+    // Go back here once done reviewing 
+    if (this.marketTradeInFlight.has(marketId)) {
+      return;
+    }
+
+    const cooldownMs = getAutoTradeIntervalMsHelper(this.configService);
+    const lastAttemptAt = this.marketTradeLastAttemptAt.get(marketId) ?? 0;
+    if (cooldownMs > 0 && Date.now() - lastAttemptAt < cooldownMs) {
+      return;
+    }
+    this.marketTradeInFlight.add(marketId);
+    this.marketTradeLastAttemptAt.set(marketId, Date.now());
+
+    try {
+      const slug = this.findMarketSlugById(marketId);
+      if (!slug) {
+        throw new Error(`Market slug not found for marketId ${marketId}`);
+      }
+      const amount = this.getTradeAmountForMarketSlug(slug);
+      const marketTrade: SaveMarketTradeInput = {
+        marketId,
+        slug,
+        amount,
+        timestamp: new Date(),
+        status: TradeStatus.BOUGHT,
+      };
+      await this.createMarketTrade(marketTrade);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to auto-create market trade for ${marketId}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+    } finally {
+      this.marketTradeInFlight.delete(marketId);
+    }
+  }
+
+  private findMarketSlugById(marketId: number): string | null {
+    for (const category of this.categories) {
+      const market = category.markets.find((item) => item.id === marketId);
+      if (market) {
+        return market.categorySlug;
+      }
+    }
+    return null;
+  }
+
+  private getTradeAmountForMarketSlug(slug: string): number {
+    const category = this.categories.find((item) => item.slug === slug);
+    if (!category) {
+      this.logger.warn(
+        `Trade amount fallback to default (1). Category not found for slug ${slug}.`,
+      );
+      return 1;
+    }
+    const tradeConfig = this.tradeConfigsByMarketVariant.get(
+      category.marketVariant,
+    );
+    if (!tradeConfig) {
+      this.logger.warn(
+        `Trade amount fallback to default (1). No trade config for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
+      );
+      return 1;
+    }
+    this.logger.log(
+      `Trade amount resolved to ${tradeConfig.amount} for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
+    );
+    return tradeConfig.amount;
   }
 
   async getUSDTBalance(): Promise<BalanceResponse> {
@@ -734,6 +1045,7 @@ export class BotService implements OnModuleInit {
     }
 
     const marketData = await this.getMarketById(marketId);
+    this.subscribeToOrderbook(marketData.data.id);
 
     // NOTE: Get the average buy price of the yes and no outcomes.
     const yesBuyPrice = book.asks.length > 0 ? book.asks[0][0] : 0;
@@ -768,10 +1080,10 @@ export class BotService implements OnModuleInit {
       );
 
     // NOTE: Disable this to buy tokens with price per share less than or equal to 0
-    // if (pricePerShare <= 0n) {
-    //   this.logger.warn('Price per share is less than or equal to 0');
-    //   return;
-    // }
+    if (pricePerShare <= 0n) {
+      this.logger.warn('Price per share is less than or equal to 0');
+      return;
+    }
 
     const order = this.orderBuilder!.buildOrder(OrderStrategy.MARKET, {
       maker: this.signer!.address,
@@ -794,7 +1106,7 @@ export class BotService implements OnModuleInit {
       data: {
         pricePerShare: pricePerShare.toString(),
         strategy: TradeStrategy.MARKET,
-        slippageBps: '200', // Only used for `MARKET` orders, in this example it's 2%
+        slippageBps: SLIPPAGE_BPS.toString(), // Only used for `MARKET` orders, in this example it's 2%
         isFillOrKill: false,
         order: {
           hash,
@@ -823,6 +1135,7 @@ export class BotService implements OnModuleInit {
       return;
     }
 
+    // TODO: rename transactionHash to orderHash
     market.transactionHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
     return this.predictRepository.saveMarketTrade(market);
