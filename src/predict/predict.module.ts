@@ -4,7 +4,7 @@ import { PredictRepository } from './predict.repository';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { PredictController } from './predict.controller';
 import { PredictService } from './predict.service';
-import { PredictRealtimeService } from './websocket.service';
+import { WebsocketService } from './websocket.service';
 
 @Module({
   controllers: [PredictController],
@@ -13,8 +13,8 @@ import { PredictRealtimeService } from './websocket.service';
     PredictService,
     PredictRepository,
     PrismaService,
-    PredictRealtimeService,
+    WebsocketService,
   ],
-  exports: [BotService, PredictService, PredictRealtimeService],
+  exports: [BotService, PredictService, WebsocketService],
 })
 export class PredictModule {}
