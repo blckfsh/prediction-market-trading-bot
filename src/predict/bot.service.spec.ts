@@ -387,4 +387,99 @@ describe('BotService', () => {
       transactions: [],
     });
   });
+
+  it('redeemStandardPosition should redeem and return result', async () => {
+    const mockResult = {
+      success: true,
+      receipt: { transactionHash: '0xhash' },
+    };
+
+    (service as any).orderBuilder = {
+      redeemPositions: jest.fn().mockResolvedValue(mockResult),
+    };
+
+    const result = await service.redeemStandardPosition({
+      conditionId: 'cond-1',
+      indexSet: 1,
+      isNegRisk: false,
+      isYieldBearing: false,
+    });
+
+    expect((service as any).orderBuilder.redeemPositions).toHaveBeenCalledWith({
+      conditionId: 'cond-1',
+      indexSet: 1,
+      isNegRisk: false,
+      isYieldBearing: false,
+    });
+    expect(result).toEqual(mockResult);
+  });
+
+  it('redeemStandardPosition should throw when redeem fails', async () => {
+    const mockResult = {
+      success: false,
+      cause: 'rejected',
+    };
+
+    (service as any).orderBuilder = {
+      redeemPositions: jest.fn().mockResolvedValue(mockResult),
+    };
+
+    await expect(
+      service.redeemStandardPosition({
+        conditionId: 'cond-2',
+        indexSet: 2,
+        isNegRisk: false,
+        isYieldBearing: true,
+      }),
+    ).rejects.toThrow('Failed to redeem position: rejected');
+  });
+
+  it('redeemNegRiskPosition should redeem with amount', async () => {
+    const mockResult = {
+      success: true,
+      receipt: { transactionHash: '0xhash' },
+    };
+
+    (service as any).orderBuilder = {
+      redeemPositions: jest.fn().mockResolvedValue(mockResult),
+    };
+
+    const result = await service.redeemNegRiskPosition({
+      conditionId: 'cond-3',
+      indexSet: 1,
+      isNegRisk: true,
+      isYieldBearing: true,
+      amount: 100n,
+    });
+
+    expect((service as any).orderBuilder.redeemPositions).toHaveBeenCalledWith({
+      conditionId: 'cond-3',
+      indexSet: 1,
+      amount: 100n,
+      isNegRisk: true,
+      isYieldBearing: true,
+    });
+    expect(result).toEqual(mockResult);
+  });
+
+  it('redeemNegRiskPosition should throw when redeem fails', async () => {
+    const mockResult = {
+      success: false,
+      cause: 'failed',
+    };
+
+    (service as any).orderBuilder = {
+      redeemPositions: jest.fn().mockResolvedValue(mockResult),
+    };
+
+    await expect(
+      service.redeemNegRiskPosition({
+        conditionId: 'cond-4',
+        indexSet: 2,
+        isNegRisk: true,
+        isYieldBearing: false,
+        amount: 50n,
+      }),
+    ).rejects.toThrow('Failed to redeem position: failed');
+  });
 });

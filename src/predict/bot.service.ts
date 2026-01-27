@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   formatEther,
@@ -14,11 +19,18 @@ import {
   Side,
   SetApprovalsResult,
 } from '@predictdotfun/sdk';
-import { MarketVariant, Trade, TradeConfig, TradeStatus, WalletApproval } from 'generated/prisma/client';
+import {
+  MarketVariant,
+  Trade,
+  TradeConfig,
+  TradeStatus,
+  WalletApproval,
+} from 'generated/prisma/client';
 import { BalanceResponse } from 'src/predict/types/balance.types';
 import {
   Category,
   Position,
+  MarketStatus,
   MarketStatistics,
   Market,
   OrderBookData,
@@ -33,6 +45,7 @@ import {
   GetOrderBookResponse,
   MarketDataResponse,
   CreateOrderResponse,
+  RedeemPositionParams,
 } from 'src/predict/types/market.types';
 import {
   AuthMessageResponse,
@@ -83,11 +96,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private readonly lastRealtimeTimestamp = new Map<string, number>();
   private readonly marketTradeInFlight = new Set<number>();
   private readonly marketTradeLastAttemptAt = new Map<number, number>();
-  private categoryRefreshState: { intervalId: NodeJS.Timeout | null; inFlight: boolean } = {
+  private categoryRefreshState: {
+    intervalId: NodeJS.Timeout | null;
+    inFlight: boolean;
+  } = {
     intervalId: null,
     inFlight: false,
   };
-  private positionsRefreshState: { intervalId: NodeJS.Timeout | null; inFlight: boolean } = {
+  private positionsRefreshState: {
+    intervalId: NodeJS.Timeout | null;
+    inFlight: boolean;
+  } = {
     intervalId: null,
     inFlight: false,
   };
@@ -327,14 +346,55 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.positions = userPositions.data;
 
     if (this.positions.length > 0) {
+      for (const position of this.positions) {
+        if (position.market.status !== MarketStatus.RESOLVED) {
+          continue;
+        }
+
+        const { indexSet } = position.outcome;
+        if (indexSet !== 1 && indexSet !== 2) {
+          this.logger.warn(
+            `Skipping redemption for market ${position.market.id}: invalid indexSet ${indexSet}.`,
+          );
+          continue;
+        }
+
+        try {
+          if (position.market.isNegRisk) {
+            await this.redeemNegRiskPosition({
+              conditionId: position.market.conditionId,
+              indexSet,
+              isNegRisk: position.market.isNegRisk,
+              isYieldBearing: position.market.isYieldBearing,
+              amount: BigInt(position.amount),
+            });
+          } else {
+            await this.redeemStandardPosition({
+              conditionId: position.market.conditionId,
+              indexSet,
+              isNegRisk: position.market.isNegRisk,
+              isYieldBearing: position.market.isYieldBearing,
+            });
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to redeem position for market ${position.market.id}: ${
+              error instanceof Error ? error.message : 'Unknown error'
+            }`,
+          );
+        }
+      }
+
       console.log(
         '================================================== Positions Table ========================================',
       );
       const tableData = this.positions.map((position) => ({
         id: position.market.id,
         title: position.market.title,
+        outcome: position.outcome.name,
         shares: formatEther(position.amount),
         usd: `$${parseFloat(position.valueUsd).toFixed(2)}`,
+        status: position.market.status,
       }));
 
       console.table(tableData);
@@ -413,8 +473,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.predictRealtimeService.connect();
 
     const shouldSubscribeWalletEvents =
-      this.configService.get<string>('PREDICT_WS_WALLET_EVENTS')?.toLowerCase() ===
-      'true';
+      this.configService
+        .get<string>('PREDICT_WS_WALLET_EVENTS')
+        ?.toLowerCase() === 'true';
 
     if (shouldSubscribeWalletEvents && this.token) {
       this.subscribeToRealtimeTopic({
@@ -449,7 +510,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private subscribeToOrderbook(marketId: number): void {
-    if (!isWebsocketEnabled(this.configService) || this.subscribedOrderbooks.has(marketId)) {
+    if (
+      !isWebsocketEnabled(this.configService) ||
+      this.subscribedOrderbooks.has(marketId)
+    ) {
       return;
     }
     this.subscribedOrderbooks.add(marketId);
@@ -462,7 +526,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   // TODO: Implement this function to subscribe to a price feed.
   // I don't know how to get the price feed id LOL.
   private subscribeToPriceFeed(priceFeedId: number): void {
-    if (!isWebsocketEnabled(this.configService) || this.subscribedPriceFeeds.has(priceFeedId)) {
+    if (
+      !isWebsocketEnabled(this.configService) ||
+      this.subscribedPriceFeeds.has(priceFeedId)
+    ) {
       return;
     }
     this.subscribedPriceFeeds.add(priceFeedId);
@@ -485,7 +552,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       );
       console.table([
         {
-        marketId: orderbook.marketId ?? topic.marketId,
+          marketId: orderbook.marketId ?? topic.marketId,
           updateTimestampMs: orderbook.updateTimestampMs ?? 'N/A',
           orderCount: orderbook.orderCount ?? 'N/A',
           asks: Array.isArray(orderbook.asks) ? orderbook.asks.length : 'N/A',
@@ -551,24 +618,33 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    console.log('====================== Predict WS Event ======================');
+    console.log(
+      '====================== Predict WS Event ======================',
+    );
     console.table([
       { topic: getTopicLabelHelper(topic), data: JSON.stringify(data) },
     ]);
-    console.log('====================== Predict WS Event ======================');
+    console.log(
+      '====================== Predict WS Event ======================',
+    );
   }
 
   private shouldLogRealtimeEvent(topic: Channel, data: unknown): boolean {
     const key = getTopicLabelHelper(topic);
     const now = Date.now();
     const minIntervalMs = Number(
-      this.configService.get<string>('PREDICT_WS_LOG_INTERVAL_MS') ?? AUTO_TRADE_INTERVAL_MS,
+      this.configService.get<string>('PREDICT_WS_LOG_INTERVAL_MS') ??
+        AUTO_TRADE_INTERVAL_MS,
     );
     if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
       return true;
     }
 
-    if (topic.name === RealtimeTopic.PredictOrderbook && data && typeof data === 'object') {
+    if (
+      topic.name === RealtimeTopic.PredictOrderbook &&
+      data &&
+      typeof data === 'object'
+    ) {
       const orderbook = data as PredictOrderbook;
       const lastTimestamp = this.lastRealtimeTimestamp.get(key);
       if (orderbook.updateTimestampMs !== undefined) {
@@ -588,13 +664,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return true;
   }
 
-  private async createMarketTradeFromOrderbook(marketId: number): Promise<void> {
+  private async createMarketTradeFromOrderbook(
+    marketId: number,
+  ): Promise<void> {
     if (!isWebsocketAutoTradeEnabledHelper(this.configService)) {
       return;
     }
 
     // TODO: check if NestJS has a better way to handle concurrent requests.
-    // Go back here once done reviewing 
+    // Go back here once done reviewing
     if (this.marketTradeInFlight.has(marketId)) {
       return;
     }
@@ -1060,7 +1138,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
 
     const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 0 : 1;
-    this.logger.log(`YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`);
+    this.logger.log(
+      `YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`,
+    );
     const outcomeOnChainId =
       marketData.data.outcomes[chosenOutcomeIndex].onChainId;
 
@@ -1139,5 +1219,59 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     market.transactionHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
     return this.predictRepository.saveMarketTrade(market);
+  }
+
+  async redeemStandardPosition({
+    conditionId,
+    indexSet,
+    isNegRisk,
+    isYieldBearing,
+  }: RedeemPositionParams) {
+    try {
+      const result = await this.orderBuilder!.redeemPositions({
+        conditionId,
+        indexSet,
+        isNegRisk,
+        isYieldBearing,
+      });
+      if (!result.success) {
+        throw new Error(`Failed to redeem position: ${result.cause}`);
+      }
+      console.log('Redeem position successful', result.receipt);
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to redeem position: ${error.message}`);
+      }
+      throw new Error('Failed to redeem position: Unknown error');
+    }
+  }
+
+  async redeemNegRiskPosition({
+    conditionId,
+    indexSet,
+    isNegRisk,
+    isYieldBearing,
+    amount,
+  }: RedeemPositionParams) {
+    try {
+      const result = await this.orderBuilder!.redeemPositions({
+        conditionId,
+        indexSet,
+        amount,
+        isNegRisk,
+        isYieldBearing,
+      });
+      if (!result.success) {
+        throw new Error(`Failed to redeem position: ${result.cause}`);
+      }
+      console.log('Redeem position successful', result.receipt);
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to redeem position: ${error.message}`);
+      }
+      throw new Error('Failed to redeem position: Unknown error');
+    }
   }
 }

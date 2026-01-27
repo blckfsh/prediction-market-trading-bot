@@ -72,6 +72,14 @@ interface Position {
   valueUsd: string;
 }
 
+interface RedeemPositionParams {
+  conditionId: string;
+  indexSet: 1 | 2;
+  isNegRisk: boolean;
+  isYieldBearing: boolean;
+  amount?: bigint;
+}
+
 interface GetAllPositionsResponse {
   success: boolean;
   cursor: string;
@@ -216,6 +224,7 @@ export type {
   GetAllMarketsResponse,
   MarketDataResponse,
   Position,
+  RedeemPositionParams,
   GetAllPositionsResponse,
   Tag,
   Category,
