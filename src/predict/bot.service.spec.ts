@@ -13,6 +13,7 @@ import {
   CreateOrderResponse,
 } from './types/market.types';
 import { TradeStatus } from 'generated/prisma/client';
+import { REFERRAL_CODE } from 'src/lib/helpers/constants';
 
 jest.mock(
   'generated/prisma/client',
@@ -481,5 +482,45 @@ describe('BotService', () => {
         amount: 50n,
       }),
     ).rejects.toThrow('Failed to redeem position: failed');
+  });
+
+  it('setReferralCode should post and return true', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(true),
+    } as any);
+
+    const result = await service.setReferralCode();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/account/referral',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    const requestBody = JSON.parse(
+      (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+    );
+    expect(requestBody).toEqual({ referralCode: REFERRAL_CODE });
+    expect(result).toBe(true);
+  });
+
+  it('setReferralCode should return false when response is not ok', async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request',
+      json: () => Promise.resolve(false),
+    } as any);
+
+    const result = await service.setReferralCode();
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/account/referral',
+      expect.objectContaining({
+        method: 'POST',
+      }),
+    );
+    expect(result).toBe(false);
   });
 });

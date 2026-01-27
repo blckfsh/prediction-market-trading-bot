@@ -6,7 +6,7 @@ import { RefreshLoopDeps, RefreshLoopState } from 'src/predict/types/bot.types';
 import {
   AUTO_TRADE_INTERVAL_MS,
   CATEGORY_REFRESH_INTERVAL_MS,
-} from 'src/lib/constants';
+} from 'src/lib/helpers/constants';
 
 function getCategoryRefreshIntervalMs(configService: ConfigService): number {
   const raw = configService.get<string>('PREDICT_CATEGORY_REFRESH_INTERVAL_MS');

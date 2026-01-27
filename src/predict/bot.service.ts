@@ -74,7 +74,7 @@ import {
   PredictWalletEvents,
   RealtimeTopic,
 } from 'src/predict/types/websocket.types';
-import { AUTO_TRADE_INTERVAL_MS, SLIPPAGE_BPS } from 'src/lib/constants';
+import { AUTO_TRADE_INTERVAL_MS, REFERRAL_CODE, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -129,6 +129,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.initializeOrderBuilder();
     await this.initializeJWTAuthorization();
     await this.getUSDTBalance();
+    this.logger.log('Setting referral code...');
+    await this.setReferralCode();
     this.logger.log('Predict bot setup completed successfully');
     this.logger.log('Searching markets...');
     await this.getAllMarkets();
@@ -738,7 +740,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return 1;
     }
     this.logger.log(
-      `Trade amount resolved to ${tradeConfig.amount} for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
+      `Trade amount resolved to ${tradeConfig.amount}\n` +
+        `MarketVariant: ${category.marketVariant}\n` +
+        `Slug: ${slug}\n` +
+        `Category: ${category.slug}`,
     );
     return tradeConfig.amount;
   }
@@ -1012,6 +1017,40 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return cached;
     }
     return this.predictRepository.getTradeConfigByMarketVariant(marketVariant);
+  }
+
+  async setReferralCode(): Promise<boolean> {
+    let result: boolean = false;
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+      headers.append('Authorization', `Bearer ${this.token!}`);
+
+      const requestOptions = {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify({
+          referralCode: REFERRAL_CODE,
+        }),
+        redirect: 'follow',
+      };
+
+      const response = await fetch(
+        `${this.baseUrl!}/account/referral`,
+        requestOptions as RequestInit,
+      );
+      if (!response.ok) {
+        this.logger.warn(`Failed to set referral code: HTTP ${response.status} ${response.statusText}`);
+        return false;
+      }
+      result = (await response.json()) as boolean;
+      return result;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to set referral code: ${error.message}`);
+      }
+      throw new Error('Failed to set referral code: Unknown error');
+    }
   }
 
   private async initializeTradeConfigs() {
