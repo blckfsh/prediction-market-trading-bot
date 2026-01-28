@@ -11,6 +11,7 @@ import {
   MarketStatistics,
   CreateOrderBody,
   CreateOrderResponse,
+  SaveMarketTradeInput,
 } from './types/market.types';
 import { TradeStatus } from 'generated/prisma/client';
 import { REFERRAL_CODE } from 'src/lib/helpers/constants';
@@ -522,5 +523,52 @@ describe('BotService', () => {
       }),
     );
     expect(result).toBe(false);
+  });
+
+  it('createLimitTrade should skip when price is not profitable after fees', async () => {
+    const market: SaveMarketTradeInput = {
+      marketId: 1,
+      slug: 'cat',
+      amount: 1,
+      timestamp: new Date(),
+      status: TradeStatus.BOUGHT,
+    };
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+
+    jest.spyOn(service as any, 'getOrderBookByMarketId').mockResolvedValue({
+      success: true,
+      data: {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [[0.99, 1]],
+        bids: [[0.02, 1]],
+      },
+    });
+
+    jest.spyOn(service as any, 'getMarketById').mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        feeRateBps: 100, // 1% fee makes max payout 0.99
+        isNegRisk: false,
+        isYieldBearing: false,
+        decimalPrecision: 2,
+        outcomes: [{ onChainId: '1' }, { onChainId: '2' }],
+      },
+    });
+
+    jest
+      .spyOn(service as any, 'subscribeToOrderbook')
+      .mockImplementation(() => {});
+
+    const createOrderSpy = jest
+      .spyOn(service, 'createOrder')
+      .mockResolvedValue({ success: true } as any);
+
+    await service.createLimitTrade(market);
+
+    expect(createOrderSpy).not.toHaveBeenCalled();
   });
 });

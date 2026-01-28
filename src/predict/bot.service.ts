@@ -10,6 +10,7 @@ import {
   formatUnits,
   parseEther,
   Wallet,
+  WeiPerEther,
   ZeroAddress,
   ZeroHash,
 } from 'ethers';
@@ -74,7 +75,12 @@ import {
   PredictWalletEvents,
   RealtimeTopic,
 } from 'src/predict/types/websocket.types';
-import { AUTO_TRADE_INTERVAL_MS, REFERRAL_CODE, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
+import {
+  AUTO_TRADE_INTERVAL_MS,
+  REFERRAL_CODE,
+  SLIPPAGE_BPS,
+  MIN_PROFIT_USD,
+} from 'src/lib/helpers/constants';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -700,7 +706,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         timestamp: new Date(),
         status: TradeStatus.BOUGHT,
       };
-      await this.createMarketTrade(marketTrade);
+      await this.createLimitTrade(marketTrade);
     } catch (error) {
       this.logger.warn(
         `Failed to auto-create market trade for ${marketId}: ${
@@ -1162,6 +1168,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
 
     const marketData = await this.getMarketById(marketId);
+    this.logger.log(
+      `Market ${marketId} feeRateBps: ${marketData.data.feeRateBps}`,
+    );
     this.subscribeToOrderbook(marketData.data.id);
 
     // NOTE: Get the average buy price of the yes and no outcomes.
@@ -1172,7 +1181,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
 
     if (yesBuyPrice === noBuyPrice) {
-      this.logger.warn('Yes and no buy prices are equal');
+      this.logger.warn(
+        `Skipping limit order for market ${marketId}. Yes and no buy prices are equal`,
+      );
       return;
     }
 
@@ -1255,6 +1266,152 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
 
     // TODO: rename transactionHash to orderHash
+    market.transactionHash =
+      createOrderResponse.data?.orderHash ?? ZeroHash.toString();
+    return this.predictRepository.saveMarketTrade(market);
+  }
+
+  async createLimitTrade(market: SaveMarketTradeInput): Promise<Trade | void> {
+    const { marketId } = market;
+    const { data: book } = await this.getOrderBookByMarketId(marketId);
+    const trade = await this.predictRepository.getTradeByMarketId(marketId);
+    if (trade) {
+      this.logger.warn(`Trade already exists. Market ID: ${marketId}`);
+      return;
+    }
+
+    const marketData = await this.getMarketById(marketId);
+    this.logger.log(
+      `Market ${marketId} feeRateBps: ${marketData.data.feeRateBps}`,
+    );
+    this.subscribeToOrderbook(marketData.data.id);
+
+    // NOTE: Get the average buy price of the yes and no outcomes.
+    const yesBuyPrice = book.asks.length > 0 ? book.asks[0][0] : 0;
+    const noBuyPrice = getComplement(
+      book.bids.length > 0 ? book.bids[0][0] : 0,
+      marketData.data.decimalPrecision,
+    );
+
+    if (yesBuyPrice === noBuyPrice) {
+      this.logger.warn('Yes and no buy prices are equal');
+      return;
+    }
+
+    const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 0 : 1;
+    this.logger.log(
+      `YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`,
+    );
+    const outcomeOnChainId =
+      marketData.data.outcomes[chosenOutcomeIndex].onChainId;
+
+    const rawTargetPrice =
+      chosenOutcomeIndex === 0 ? yesBuyPrice : noBuyPrice;
+    if (rawTargetPrice <= 0) {
+      this.logger.warn(
+        `Skipping limit order for market ${marketId}. Limit price per share is less than or equal to 0`,
+      );
+      return;
+    }
+
+    const precision = marketData.data.decimalPrecision ?? 2;
+    this.logger.log(`Market ${marketId} decimalPrecision: ${precision}`);
+    const targetPrice = Number(rawTargetPrice.toFixed(precision));
+    const pricePerShareWei = parseEther(targetPrice.toString());
+    const feeRateBps = BigInt(marketData.data.feeRateBps);
+    const oneHundredPercent = 10000n;
+    // computation max payout per share: 1 ether - fee rate bps / 100%
+    const maxPayoutPerShareWei = (WeiPerEther * (oneHundredPercent - feeRateBps)) / oneHundredPercent;
+    if (pricePerShareWei >= maxPayoutPerShareWei) {
+      this.logger.warn(
+        `Skipping limit order for market ${marketId}.`,
+      );
+      this.logger.warn(`Price ${targetPrice} is not profitable after fees.`);
+      this.logger.warn(`Max profitable price: ${formatEther(maxPayoutPerShareWei)}`);
+      return;
+    }
+
+    const budgetInWei = parseEther(market.amount.toString());
+    // computation quantity: budget / price per share
+    const quantityWei = (budgetInWei * WeiPerEther) / pricePerShareWei;
+    if (quantityWei <= 0n) {
+      this.logger.warn(
+        `Skipping limit order for market ${marketId}. Quantity is less than or equal to 0`,
+      );
+      return;
+    }
+
+    // computation expected payout: quantity * max payout per share
+    const expectedPayoutWei =
+      (quantityWei * maxPayoutPerShareWei) / WeiPerEther;
+    const expectedProfitWei = expectedPayoutWei - budgetInWei; 
+    const minProfitWei = parseEther(MIN_PROFIT_USD.toString());
+    
+    if (expectedProfitWei < minProfitWei) {
+      this.logger.warn(
+        `Skipping limit order for market ${marketId}.`
+      );
+      this.logger.warn(`Expected profit: ${formatEther(expectedProfitWei)} < min ${MIN_PROFIT_USD} USD.`);
+      return;
+    }
+
+    const { pricePerShare, makerAmount, takerAmount } =
+      this.orderBuilder!.getLimitOrderAmounts({
+        side: Side.BUY,
+        pricePerShareWei,
+        quantityWei,
+      });
+
+    const order = this.orderBuilder!.buildOrder(OrderStrategy.LIMIT, {
+      maker: this.signer!.address,
+      signer: this.signer!.address,
+      side: Side.BUY,
+      tokenId: outcomeOnChainId,
+      makerAmount: makerAmount,
+      takerAmount: takerAmount,
+      feeRateBps: marketData.data.feeRateBps,
+    });
+
+    const typedData = this.orderBuilder!.buildTypedData(order, {
+      isNegRisk: marketData.data.isNegRisk,
+      isYieldBearing: marketData.data.isYieldBearing,
+    });
+    const signedOrder = await this.orderBuilder!.signTypedDataOrder(typedData);
+    const hash = await this.orderBuilder!.buildTypedDataHash(typedData);
+
+    const createOrderBody: CreateOrderBody = {
+      data: {
+        pricePerShare: pricePerShare.toString(),
+        strategy: TradeStrategy.LIMIT,
+        slippageBps: '0',
+        isFillOrKill: false,
+        order: {
+          hash,
+          salt: signedOrder.salt.toString(),
+          maker: signedOrder.maker,
+          signer: signedOrder.signer,
+          taker: signedOrder.taker ?? ZeroAddress,
+          tokenId: signedOrder.tokenId.toString(),
+          makerAmount: signedOrder.makerAmount.toString(),
+          takerAmount: signedOrder.takerAmount.toString(),
+          expiration: signedOrder.expiration.toString(),
+          nonce: signedOrder.nonce.toString(),
+          feeRateBps: signedOrder.feeRateBps.toString(),
+          side: signedOrder.side,
+          signatureType: signedOrder.signatureType,
+          signature: signedOrder.signature,
+        },
+      },
+    };
+
+    const createOrderResponse = await this.createOrder(createOrderBody);
+    if (!createOrderResponse.success) {
+      this.logger.warn(
+        `Failed to create order: ${createOrderResponse.error!._tag}`,
+      );
+      return;
+    }
+
     market.transactionHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
     return this.predictRepository.saveMarketTrade(market);
