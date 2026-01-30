@@ -26,6 +26,18 @@ function getAutoTradeIntervalMs(configService: ConfigService): number {
   return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
 }
 
+function getLimitLossPercentage(configService: ConfigService): number | null {
+  const raw = configService.get<string>('PREDICT_LIMIT_LOSS_PERCENTAGE');
+  if (!raw || raw.trim() === '') {
+    return null;
+  }
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
+    return null;
+  }
+  return parsed;
+}
+
 function isWebsocketAutoTradeEnabled(configService: ConfigService): boolean {
   const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE');
   if (!raw || raw.trim() === '') {
@@ -177,6 +189,7 @@ function getTopicLabel(topic: Channel): string {
 export {
   getCategoryRefreshIntervalMs,
   getAutoTradeIntervalMs,
+  getLimitLossPercentage,
   isWebsocketAutoTradeEnabled,
   isBotEnabled,
   isWebsocketEnabled,

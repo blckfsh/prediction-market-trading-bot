@@ -7,6 +7,7 @@ import { ZeroHash } from 'ethers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SaveMarketTradeInput } from 'src/predict/types/market.types';
 import { MarketVariant, TradeOptions } from 'lib/zenstack/models';
+import { TradeStatus } from 'generated/prisma/client';
 
 @Injectable()
 export class PredictRepository {
@@ -50,6 +51,21 @@ export class PredictRepository {
         transactionHash: transactionHash ?? ZeroHash.toString(),
         timestamp,
         status,
+      },
+    });
+  }
+
+  async updateMarketTradeStatus(
+    tradeId: number,
+    status: TradeStatus,
+    transactionHash?: string,
+  ) {
+    return this.prisma.trade.update({
+      where: { id: tradeId },
+      data: {
+        status,
+        transactionHash: transactionHash ?? ZeroHash.toString(),
+        timestamp: new Date(),
       },
     });
   }

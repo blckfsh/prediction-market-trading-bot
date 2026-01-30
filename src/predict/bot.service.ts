@@ -58,6 +58,7 @@ import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
 import {
   getTopicLabel as getTopicLabelHelper,
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
+  getLimitLossPercentage as getLimitLossPercentageHelper,
   isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
   isBotEnabled,
   isWebsocketEnabled,
@@ -412,6 +413,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
+      await this.evaluateStopLossForPositions();
+
       console.log(
         '================================================== Positions Table ========================================',
       );
@@ -430,6 +433,42 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       );
     } else {
       this.logger.log('No positions found');
+    }
+  }
+
+  private async evaluateStopLossForPositions(): Promise<void> {
+    const limitLossPercentage = getLimitLossPercentageHelper(
+      this.configService,
+    );
+    if (limitLossPercentage === null) {
+      return;
+    }
+
+    for (const position of this.positions) {
+      if (position.market.status === MarketStatus.RESOLVED) {
+        continue;
+      }
+
+      const trade = await this.predictRepository.getTradeByMarketId(
+        position.market.id,
+      );
+      if (!trade || trade.status === TradeStatus.SOLD) {
+        continue;
+      }
+
+      try {
+        await this.maybeSellPositionIfLossThresholdReached(
+          trade,
+          position,
+          limitLossPercentage,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Failed to evaluate stop-loss for market ${position.market.id}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
     }
   }
 
@@ -1177,15 +1216,188 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return data;
   }
 
-  async createMarketTrade(market: SaveMarketTradeInput): Promise<Trade | void> {
-    const { marketId } = market;
-    const { data: book } = await this.getOrderBookByMarketId(marketId);
-    const trade = await this.predictRepository.getTradeByMarketId(marketId);
-    if (trade) {
-      this.logger.warn(`Trade already exists. Market ID: ${marketId}`);
+  private async maybeSellPositionIfLossThresholdReached(
+    existingTrade: Trade,
+    position: Position,
+    limitLossPercentage?: number,
+  ): Promise<Trade | void> {
+    const resolvedLimitLossPercentage =
+      limitLossPercentage ??
+      getLimitLossPercentageHelper(this.configService);
+    if (resolvedLimitLossPercentage === null) {
       return;
     }
 
+    const entryValueUsd = existingTrade.amount;
+    if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
+      this.logger.warn(
+        `Invalid entry value for market ${position.market.id}. Skipping sell.`,
+      );
+      return;
+    }
+
+    const currentValueUsd = Number(position.valueUsd);
+    if (!Number.isFinite(currentValueUsd)) {
+      this.logger.warn(
+        `Invalid position value for market ${position.market.id}. Skipping sell.`,
+      );
+      return;
+    }
+
+    const lossPercentage =
+      ((entryValueUsd - currentValueUsd) / entryValueUsd) * 100;
+    if (lossPercentage < resolvedLimitLossPercentage) {
+      return;
+    }
+
+    this.logger.warn(
+      `Loss limit reached for market ${position.market.id}: ${lossPercentage.toFixed(2)}% >= ${resolvedLimitLossPercentage}%. Selling position.`,
+    );
+
+    const { data: book } = await this.getOrderBookByMarketId(
+      position.market.id,
+    );
+    const marketData = await this.getMarketById(position.market.id);
+    this.logger.log(
+      `Market ${position.market.id} feeRateBps: ${marketData.data.feeRateBps}`,
+    );
+    this.subscribeToOrderbook(marketData.data.id);
+
+    const normalizedBook = {
+      ...book,
+      asks: normalizeDepth(book.asks),
+      bids: normalizeDepth(book.bids),
+    };
+
+    const quantityWei = BigInt(position.amount);
+    if (quantityWei <= 0n) {
+      this.logger.warn(
+        `Skipping sell for market ${position.market.id}. Quantity is less than or equal to 0`,
+      );
+      return;
+    }
+
+    const { lastPrice, pricePerShare, makerAmount, takerAmount } =
+      this.orderBuilder!.getMarketOrderAmounts(
+        {
+          side: Side.SELL,
+          quantityWei,
+        },
+        normalizedBook, // It's recommended to re-fetch the orderbook regularly to avoid issues
+      );
+
+    if (pricePerShare <= 0n) {
+      this.logger.warn('Price per share is less than or equal to 0');
+      return;
+    }
+
+    const order = this.orderBuilder!.buildOrder(OrderStrategy.MARKET, {
+      maker: this.signer!.address,
+      signer: this.signer!.address,
+      side: Side.SELL,
+      tokenId: position.outcome.onChainId,
+      makerAmount: makerAmount,
+      takerAmount: takerAmount,
+      feeRateBps: marketData.data.feeRateBps,
+    });
+
+    const typedData = this.orderBuilder!.buildTypedData(order, {
+      isNegRisk: marketData.data.isNegRisk,
+      isYieldBearing: marketData.data.isYieldBearing,
+    });
+    const signedOrder = await this.orderBuilder!.signTypedDataOrder(typedData);
+    const hash = await this.orderBuilder!.buildTypedDataHash(typedData);
+
+    const createOrderBody: CreateOrderBody = {
+      data: {
+        pricePerShare: pricePerShare.toString(),
+        strategy: TradeStrategy.MARKET,
+        slippageBps: SLIPPAGE_BPS.toString(), // Only used for `MARKET` orders, in this example it's 2%
+        isFillOrKill: false,
+        order: {
+          hash,
+          salt: signedOrder.salt.toString(),
+          maker: signedOrder.maker,
+          signer: signedOrder.signer,
+          taker: signedOrder.taker ?? ZeroAddress,
+          tokenId: signedOrder.tokenId.toString(),
+          makerAmount: signedOrder.makerAmount.toString(),
+          takerAmount: signedOrder.takerAmount.toString(),
+          expiration: signedOrder.expiration.toString(),
+          nonce: signedOrder.nonce.toString(),
+          feeRateBps: signedOrder.feeRateBps.toString(),
+          side: signedOrder.side,
+          signatureType: signedOrder.signatureType,
+          signature: signedOrder.signature,
+        },
+      },
+    };
+
+    const createOrderResponse = await this.createOrder(createOrderBody);
+    if (!createOrderResponse.success) {
+      this.logger.warn(
+        `Failed to create order: ${createOrderResponse.error!._tag}`,
+      );
+      return;
+    }
+
+    const orderHash =
+      createOrderResponse.data?.orderHash ?? ZeroHash.toString();
+    return this.predictRepository.updateMarketTradeStatus(
+      existingTrade.id,
+      TradeStatus.SOLD,
+      orderHash,
+    );
+  }
+
+  async createMarketTrade(market: SaveMarketTradeInput): Promise<Trade | void> {
+    const { marketId } = market;
+    const existingTrade = await this.predictRepository.getTradeByMarketId(
+      marketId,
+    );
+
+    if (existingTrade) {
+      if (existingTrade.status === TradeStatus.SOLD) {
+        this.logger.warn(`Trade already sold. Market ID: ${marketId}`);
+        return;
+      }
+
+      const limitLossPercentage = getLimitLossPercentageHelper(
+        this.configService,
+      );
+      if (limitLossPercentage === null) {
+        this.logger.warn(`Trade already exists. Market ID: ${marketId}`);
+        return;
+      }
+
+      let position = this.positions.find(
+        (item) => item.market.id === marketId,
+      );
+      if (!position) {
+        const positionsResponse = await this.getAllPositions();
+        if (positionsResponse?.data) {
+          this.positions = positionsResponse.data;
+          position = this.positions.find(
+            (item) => item.market.id === marketId,
+          );
+        }
+      }
+
+      if (!position) {
+        this.logger.warn(
+          `No position found for market ${marketId}. Skipping sell.`,
+        );
+        return;
+      }
+
+      return this.maybeSellPositionIfLossThresholdReached(
+        existingTrade,
+        position,
+        limitLossPercentage,
+      );
+    }
+
+    const { data: book } = await this.getOrderBookByMarketId(marketId);
     const marketData = await this.getMarketById(marketId);
     this.logger.log(
       `Market ${marketId} feeRateBps: ${marketData.data.feeRateBps}`,
