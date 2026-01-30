@@ -37,6 +37,7 @@ jest.mock('./predict.repository', () => {
   const MockRepo = jest.fn().mockImplementation(() => ({
     saveMarketTrade: jest.fn(),
     getTradeByMarketId: jest.fn(),
+    updateMarketTradeStatus: jest.fn(),
   }));
   return { PredictRepository: MockRepo };
 });
@@ -570,5 +571,115 @@ describe('BotService', () => {
     await service.createLimitTrade(market);
 
     expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
+  it('createMarketTrade should evaluate stop-loss when trade exists', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
+    );
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue({
+      id: 10,
+      amount: 100,
+      status: TradeStatus.BOUGHT,
+    });
+
+    (service as any).positions = [
+      {
+        market: { id: 1, status: 'OPEN' },
+        outcome: { onChainId: '1' },
+        amount: '1000000000000000000',
+        valueUsd: '40',
+      },
+    ];
+
+    const stopLossSpy = jest
+      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
+      .mockResolvedValue(undefined);
+
+    await service.createMarketTrade({
+      marketId: 1,
+      slug: 'cat',
+      amount: 1,
+      timestamp: new Date(),
+      status: TradeStatus.BOUGHT,
+    });
+
+    expect(stopLossSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 10 }),
+      expect.objectContaining({ valueUsd: '40' }),
+      60,
+    );
+  });
+
+  it('evaluateStopLossForPositions should skip resolved markets', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
+    );
+
+    (service as any).positions = [
+      {
+        market: { id: 1, status: 'RESOLVED' },
+        outcome: { onChainId: '1' },
+        amount: '1000000000000000000',
+        valueUsd: '40',
+      },
+      {
+        market: { id: 2, status: 'OPEN' },
+        outcome: { onChainId: '2' },
+        amount: '1000000000000000000',
+        valueUsd: '40',
+      },
+    ];
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest
+      .fn()
+      .mockResolvedValueOnce({ id: 1, status: TradeStatus.BOUGHT, amount: 100 })
+      .mockResolvedValueOnce({ id: 2, status: TradeStatus.BOUGHT, amount: 100 });
+
+    const stopLossSpy = jest
+      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
+      .mockResolvedValue(undefined);
+
+    await (service as any).evaluateStopLossForPositions();
+
+    expect(stopLossSpy).toHaveBeenCalledTimes(1);
+    expect(stopLossSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1 }),
+      expect.objectContaining({ market: { id: 2, status: 'OPEN' } }),
+      60,
+    );
+  });
+
+  it('evaluateStopLossForPositions should skip sold trades', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
+    );
+
+    (service as any).positions = [
+      {
+        market: { id: 3, status: 'OPEN' },
+        outcome: { onChainId: '1' },
+        amount: '1000000000000000000',
+        valueUsd: '40',
+      },
+    ];
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue({
+      id: 3,
+      status: TradeStatus.SOLD,
+      amount: 100,
+    });
+
+    const stopLossSpy = jest
+      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
+      .mockResolvedValue(undefined);
+
+    await (service as any).evaluateStopLossForPositions();
+
+    expect(stopLossSpy).not.toHaveBeenCalled();
   });
 });
