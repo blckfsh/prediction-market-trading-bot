@@ -255,98 +255,117 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       () => this.getDefaultMarkets(),
       (data) => filterAndSortCryptoUpDownCategories(data),
       (marketId) => this.subscribeToOrderbook(marketId),
+      async () => {
+        this.logger.log(
+          `Refreshed categories @ ${new Date().toISOString()}; logging tables.`,
+        );
+        await this.logCategoryTables({ subscribeToMarkets: false });
+      },
     );
   }
 
   private async initializeCategoryTable() {
-    if (this.categories.length > 0) {
-      console.log(
-        '================================================== Categories Table ========================================',
-      );
-      const tableData = this.categories.map((category) => ({
-        title: category.title,
-        slug: category.slug,
-        // startsAt: category.startsAt, // NOTE: you can display to see the date and time
-      }));
+    await this.logCategoryTables({ subscribeToMarkets: true });
+  }
 
-      console.table(tableData);
-      console.log(
-        '================================================== Categories Table ========================================',
-      );
+  private async logCategoryTables(options?: {
+    categories?: Category[];
+    subscribeToMarkets?: boolean;
+  }): Promise<void> {
+    const categories = options?.categories ?? this.categories;
+    const shouldSubscribe = options?.subscribeToMarkets ?? false;
 
-      console.log(
-        '================================================== Category Markets Table ========================================',
-      );
-      for (const category of this.categories) {
-        if (category.markets.length > 0) {
-          console.log(`-- Markets for category: ${category.title} --\n`);
+    if (categories.length === 0) {
+      this.logger.log('No categories found');
+      return;
+    }
+
+    console.log(
+      '================================================== Categories Table ========================================',
+    );
+    const tableData = categories.map((category) => ({
+      title: category.title,
+      slug: category.slug,
+      // startsAt: category.startsAt, // NOTE: you can display to see the date and time
+    }));
+
+    console.table(tableData);
+    console.log(
+      '================================================== Categories Table ========================================',
+    );
+
+    console.log(
+      '================================================== Category Markets Table ========================================',
+    );
+    for (const category of categories) {
+      if (category.markets.length > 0) {
+        console.log(`-- Markets for category: ${category.title} --\n`);
+        if (shouldSubscribe) {
           for (const market of category.markets) {
             this.subscribeToOrderbook(market.id);
           }
-          // Process markets in batches to avoid rate limiting
-          const batchSize = 5;
-          const marketTable = [];
-
-          for (let i = 0; i < category.markets.length; i += batchSize) {
-            const batch = category.markets.slice(i, i + batchSize);
-            const batchResults = await Promise.all(
-              batch.map(async (market) => {
-                try {
-                  const stats = await this.getMarketStatistics(market.id);
-                  return {
-                    id: market.id,
-                    slug: market.categorySlug,
-                    // question: market.question,
-                    status: market.status,
-                    outcomes: market.outcomes
-                      .map((outcome) => {
-                        const outcomeStatus = outcome.status ?? 'PENDING';
-                        return `${outcome.name} (${outcomeStatus})`;
-                      })
-                      .join(', '),
-                    liquidity: stats.data.totalLiquidityUsd,
-                    volume: stats.data.volumeTotalUsd,
-                  };
-                } catch (error) {
-                  this.logger.warn(
-                    `Failed to fetch statistics for market ${market.id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                  );
-                  return {
-                    id: market.id,
-                    slug: market.categorySlug,
-                    question: market.question,
-                    status: market.status,
-                    outcomes: market.outcomes
-                      .map((outcome) => {
-                        const outcomeStatus = outcome.status ?? 'PENDING';
-                        return `${outcome.name} (${outcomeStatus})`;
-                      })
-                      .join(', '),
-                    liquidity: 'N/A',
-                    volume: 'N/A',
-                  };
-                }
-              }),
-            );
-            marketTable.push(...batchResults);
-
-            // Add a small delay between batches to avoid rate limiting
-            if (i + batchSize < category.markets.length) {
-              await new Promise((resolve) => setTimeout(resolve, 200));
-            }
-          }
-
-          console.table(marketTable);
-        } else {
-          console.log(`-- No markets for category: ${category.title}`);
         }
+        // Process markets in batches to avoid rate limiting
+        const batchSize = 5;
+        const marketTable = [];
+
+        for (let i = 0; i < category.markets.length; i += batchSize) {
+          const batch = category.markets.slice(i, i + batchSize);
+          const batchResults = await Promise.all(
+            batch.map(async (market) => {
+              try {
+                const stats = await this.getMarketStatistics(market.id);
+                return {
+                  id: market.id,
+                  slug: market.categorySlug,
+                  // question: market.question,
+                  status: market.status,
+                  outcomes: market.outcomes
+                    .map((outcome) => {
+                      const outcomeStatus = outcome.status ?? 'PENDING';
+                      return `${outcome.name} (${outcomeStatus})`;
+                    })
+                    .join(', '),
+                  liquidity: stats.data.totalLiquidityUsd,
+                  volume: stats.data.volumeTotalUsd,
+                };
+              } catch (error) {
+                this.logger.warn(
+                  `Failed to fetch statistics for market ${market.id}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                );
+                return {
+                  id: market.id,
+                  slug: market.categorySlug,
+                  question: market.question,
+                  status: market.status,
+                  outcomes: market.outcomes
+                    .map((outcome) => {
+                      const outcomeStatus = outcome.status ?? 'PENDING';
+                      return `${outcome.name} (${outcomeStatus})`;
+                    })
+                    .join(', '),
+                  liquidity: 'N/A',
+                  volume: 'N/A',
+                };
+              }
+            }),
+          );
+          marketTable.push(...batchResults);
+
+          // Add a small delay between batches to avoid rate limiting
+          if (i + batchSize < category.markets.length) {
+            await new Promise((resolve) => setTimeout(resolve, 200));
+          }
+        }
+
+        console.table(marketTable);
+      } else {
+        console.log(`-- No markets for category: ${category.title}`);
       }
-      console.log(
-        '================================================== Category Markets Table ========================================',
-      );
-    } else {
-      this.logger.log('No categories found');
     }
+    console.log(
+      '================================================== Category Markets Table ========================================',
+    );
   }
 
   private async initializePositionTable() {

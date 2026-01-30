@@ -67,6 +67,7 @@ async function refreshCategoriesAndSubscribe(
   getDefaultMarkets: () => Promise<{ data: Category[] }>,
   filterAndSort: (data: Category[]) => Category[],
   subscribeToOrderbook: (marketId: number) => void,
+  onUpdated?: (updated: Category[]) => void | Promise<void>,
 ): Promise<void> {
   if (state.inFlight) {
     return;
@@ -94,6 +95,10 @@ async function refreshCategoriesAndSubscribe(
       deps.logger.log(
         `Discovered ${newMarkets.length} new markets; subscribed to orderbooks.`,
       );
+    }
+
+    if (onUpdated) {
+      await onUpdated(updatedCategories);
     }
   } catch (error) {
     deps.logger.warn(
