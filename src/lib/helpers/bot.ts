@@ -1,7 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { Category, MarketVariant } from 'src/predict/types/market.types';
 import { parseBooleanFlag } from 'src/lib/utils/boolean';
-import { Channel, RealtimeTopic } from 'src/predict/types/websocket.types';
+import {
+  Channel,
+  PredictOrderbook,
+  RealtimeTopic,
+} from 'src/predict/types/websocket.types';
 import { RefreshLoopDeps, RefreshLoopState } from 'src/predict/types/bot.types';
 import {
   AUTO_TRADE_INTERVAL_MS,
@@ -186,6 +190,45 @@ function getTopicLabel(topic: Channel): string {
   }
 }
 
+function shouldLogRealtimeEvent(params: {
+  configService: ConfigService;
+  topic: Channel;
+  data: unknown;
+  lastRealtimeLogAt: Map<string, number>;
+  lastRealtimeTimestamp: Map<string, number>;
+}): boolean {
+  const { configService, topic, data, lastRealtimeLogAt, lastRealtimeTimestamp } =
+    params;
+  const key = getTopicLabel(topic);
+  const now = Date.now();
+  const minIntervalMs = Number(
+    configService.get<string>('PREDICT_WS_LOG_INTERVAL_MS') ??
+      AUTO_TRADE_INTERVAL_MS,
+  );
+  if (!Number.isFinite(minIntervalMs) || minIntervalMs <= 0) {
+    return true;
+  }
+
+  if (topic.name === RealtimeTopic.PredictOrderbook && data && typeof data === 'object') {
+    const orderbook = data as PredictOrderbook;
+    const lastTimestamp = lastRealtimeTimestamp.get(key);
+    if (orderbook.updateTimestampMs !== undefined) {
+      if (lastTimestamp === orderbook.updateTimestampMs) {
+        return false;
+      }
+      lastRealtimeTimestamp.set(key, orderbook.updateTimestampMs);
+    }
+  }
+
+  const lastLoggedAt = lastRealtimeLogAt.get(key) ?? 0;
+  if (now - lastLoggedAt < minIntervalMs) {
+    return false;
+  }
+
+  lastRealtimeLogAt.set(key, now);
+  return true;
+}
+
 export {
   getCategoryRefreshIntervalMs,
   getAutoTradeIntervalMs,
@@ -199,4 +242,5 @@ export {
   startPositionsRefreshLoop,
   refreshPositionsTable,
   getTopicLabel,
+  shouldLogRealtimeEvent,
 };
