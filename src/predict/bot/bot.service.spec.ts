@@ -1,7 +1,10 @@
 import { BotService } from './bot.service';
 import { ConfigService } from '@nestjs/config';
-import { PredictRepository } from './predict.repository';
-import { WebsocketService } from './websocket.service';
+import { PredictRepository } from '../predict.repository';
+import { WebsocketService } from '../websocket/websocket.service';
+import { TradeService } from '../trade/trade.service';
+import { RedeemService } from '../redeem/redeem.service';
+import { PredictService } from '../predict.service';
 import {
   GetAllMarketsResponse,
   GetCategoriesByResponse,
@@ -12,7 +15,8 @@ import {
   CreateOrderBody,
   CreateOrderResponse,
   SaveMarketTradeInput,
-} from './types/market.types';
+} from '../types/market.types';
+import { RealtimeTopic } from '../types/websocket.types';
 import { TradeStatus } from 'generated/prisma/client';
 import { REFERRAL_CODE } from 'src/lib/helpers/constants';
 
@@ -33,7 +37,7 @@ jest.mock(
   { virtual: true },
 );
 
-jest.mock('./predict.repository', () => {
+jest.mock('../predict.repository', () => {
   const MockRepo = jest.fn().mockImplementation(() => ({
     saveMarketTrade: jest.fn(),
     getTradeByMarketId: jest.fn(),
@@ -44,6 +48,9 @@ jest.mock('./predict.repository', () => {
 
 describe('BotService', () => {
   let service: BotService;
+  let tradeService: TradeService;
+  let redeemService: RedeemService;
+  let predictService: PredictService;
   let configService: ConfigService;
   let predictRepository: PredictRepository;
   let websocketService: WebsocketService;
@@ -67,7 +74,17 @@ describe('BotService', () => {
       subscribe: jest.fn(),
     } as unknown as WebsocketService;
 
-    service = new BotService(configService, predictRepository, websocketService);
+    tradeService = new TradeService(predictRepository, configService);
+    redeemService = new RedeemService();
+    predictService = new PredictService(predictRepository);
+    service = new BotService(
+      configService,
+      predictRepository,
+      websocketService,
+      tradeService,
+      redeemService,
+      predictService,
+    );
 
     // Inject required config values directly
     (service as any).baseUrl = 'https://api.example.com';
@@ -342,7 +359,12 @@ describe('BotService', () => {
       json: () => Promise.resolve(mockResponse),
     } as any);
 
-    const result = await service.createOrder(mockCreateOrderBody);
+    const result = await tradeService.createOrder({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-api-key',
+      token: 'jwt-token',
+      createOrderBody: mockCreateOrderBody,
+    });
 
     expect(global.fetch).toHaveBeenCalledWith(
       'https://api.example.com/orders',
@@ -357,7 +379,10 @@ describe('BotService', () => {
     const repo = predictRepository as any;
     repo.getWalletApprovalByWalletAddress.mockResolvedValue({ id: 1 });
 
-    const result = await service.setApprovals();
+    const result = await predictService.setApprovals({
+      predictAccount: '0xPredict',
+      orderBuilder: { setApprovals: jest.fn() } as any,
+    });
 
     expect(repo.getWalletApprovalByWalletAddress).toHaveBeenCalledWith(
       '0xPredict',
@@ -371,19 +396,22 @@ describe('BotService', () => {
     repo.getWalletApprovalByWalletAddress.mockResolvedValue(null);
     repo.saveWalletApprovals.mockResolvedValue({ id: 2 });
 
-    (service as any).orderBuilder = {
+    const orderBuilder = {
       setApprovals: jest.fn().mockResolvedValue({
         success: true,
         transactions: [],
       }),
     };
 
-    const result = await service.setApprovals();
+    const result = await predictService.setApprovals({
+      predictAccount: '0xPredict',
+      orderBuilder: orderBuilder as any,
+    });
 
     expect(repo.getWalletApprovalByWalletAddress).toHaveBeenCalledWith(
       '0xPredict',
     );
-    expect((service as any).orderBuilder.setApprovals).toHaveBeenCalled();
+    expect(orderBuilder.setApprovals).toHaveBeenCalled();
     expect(repo.saveWalletApprovals).toHaveBeenCalledWith('0xPredict');
     expect(result).toEqual({
       success: true,
@@ -397,18 +425,19 @@ describe('BotService', () => {
       receipt: { transactionHash: '0xhash' },
     };
 
-    (service as any).orderBuilder = {
+    const orderBuilder = {
       redeemPositions: jest.fn().mockResolvedValue(mockResult),
     };
 
-    const result = await service.redeemStandardPosition({
+    const result = await redeemService.redeemStandardPosition({
+      orderBuilder: orderBuilder as any,
       conditionId: 'cond-1',
       indexSet: 1,
       isNegRisk: false,
       isYieldBearing: false,
     });
 
-    expect((service as any).orderBuilder.redeemPositions).toHaveBeenCalledWith({
+    expect(orderBuilder.redeemPositions).toHaveBeenCalledWith({
       conditionId: 'cond-1',
       indexSet: 1,
       isNegRisk: false,
@@ -423,12 +452,13 @@ describe('BotService', () => {
       cause: 'rejected',
     };
 
-    (service as any).orderBuilder = {
+    const orderBuilder = {
       redeemPositions: jest.fn().mockResolvedValue(mockResult),
     };
 
     await expect(
-      service.redeemStandardPosition({
+      redeemService.redeemStandardPosition({
+        orderBuilder: orderBuilder as any,
         conditionId: 'cond-2',
         indexSet: 2,
         isNegRisk: false,
@@ -443,11 +473,12 @@ describe('BotService', () => {
       receipt: { transactionHash: '0xhash' },
     };
 
-    (service as any).orderBuilder = {
+    const orderBuilder = {
       redeemPositions: jest.fn().mockResolvedValue(mockResult),
     };
 
-    const result = await service.redeemNegRiskPosition({
+    const result = await redeemService.redeemNegRiskPosition({
+      orderBuilder: orderBuilder as any,
       conditionId: 'cond-3',
       indexSet: 1,
       isNegRisk: true,
@@ -455,7 +486,7 @@ describe('BotService', () => {
       amount: 100n,
     });
 
-    expect((service as any).orderBuilder.redeemPositions).toHaveBeenCalledWith({
+    expect(orderBuilder.redeemPositions).toHaveBeenCalledWith({
       conditionId: 'cond-3',
       indexSet: 1,
       amount: 100n,
@@ -471,12 +502,13 @@ describe('BotService', () => {
       cause: 'failed',
     };
 
-    (service as any).orderBuilder = {
+    const orderBuilder = {
       redeemPositions: jest.fn().mockResolvedValue(mockResult),
     };
 
     await expect(
-      service.redeemNegRiskPosition({
+      redeemService.redeemNegRiskPosition({
+        orderBuilder: orderBuilder as any,
         conditionId: 'cond-4',
         indexSet: 2,
         isNegRisk: true,
@@ -492,7 +524,11 @@ describe('BotService', () => {
       json: () => Promise.resolve(true),
     } as any);
 
-    const result = await service.setReferralCode();
+    const result = await predictService.setReferralCode({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-api-key',
+      token: 'jwt-token',
+    });
 
     expect(global.fetch).toHaveBeenCalledWith(
       'https://api.example.com/account/referral',
@@ -515,7 +551,11 @@ describe('BotService', () => {
       json: () => Promise.resolve(false),
     } as any);
 
-    const result = await service.setReferralCode();
+    const result = await predictService.setReferralCode({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-api-key',
+      token: 'jwt-token',
+    });
 
     expect(global.fetch).toHaveBeenCalledWith(
       'https://api.example.com/account/referral',
@@ -526,7 +566,29 @@ describe('BotService', () => {
     expect(result).toBe(false);
   });
 
-  it('createLimitTrade should skip when price is not profitable after fees', async () => {
+  it('logRealtimeEvent should trigger auto-trade from orderbook', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_WS_LOG_INTERVAL_MS' ? '0' : undefined,
+    );
+
+    const createTradeSpy = jest
+      .spyOn(tradeService, 'createTradeFromOrderbook')
+      .mockResolvedValue(undefined);
+
+    await (service as any).logRealtimeEvent(
+      { name: RealtimeTopic.PredictOrderbook, marketId: 1 },
+      {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [],
+        bids: [],
+      },
+    );
+
+    expect(createTradeSpy).toHaveBeenCalled();
+  });
+
+  it('buyPosition should skip when price is not profitable after fees', async () => {
     const market: SaveMarketTradeInput = {
       marketId: 1,
       slug: 'cat',
@@ -538,7 +600,7 @@ describe('BotService', () => {
     const repo = predictRepository as any;
     repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
 
-    jest.spyOn(service as any, 'getOrderBookByMarketId').mockResolvedValue({
+    const getOrderBookByMarketId = jest.fn().mockResolvedValue({
       success: true,
       data: {
         marketId: 1,
@@ -548,7 +610,7 @@ describe('BotService', () => {
       },
     });
 
-    jest.spyOn(service as any, 'getMarketById').mockResolvedValue({
+    const getMarketById = jest.fn().mockResolvedValue({
       success: true,
       data: {
         id: 1,
@@ -560,65 +622,31 @@ describe('BotService', () => {
       },
     });
 
-    jest
-      .spyOn(service as any, 'subscribeToOrderbook')
-      .mockImplementation(() => {});
+    const subscribeToOrderbook = jest.fn();
 
     const createOrderSpy = jest
-      .spyOn(service, 'createOrder')
+      .fn()
       .mockResolvedValue({ success: true } as any);
 
-    await service.createLimitTrade(market);
+    await (tradeService as any).buyPosition({
+      market,
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook,
+      createOrder: createOrderSpy,
+    });
 
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 
-  it('createMarketTrade should evaluate stop-loss when trade exists', async () => {
+  it('evaluateStopLoss should skip resolved markets', async () => {
     (configService.get as jest.Mock).mockImplementation((key: string) =>
       key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
     );
 
-    const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest.fn().mockResolvedValue({
-      id: 10,
-      amount: 100,
-      status: TradeStatus.BOUGHT,
-    });
-
-    (service as any).positions = [
-      {
-        market: { id: 1, status: 'OPEN' },
-        outcome: { onChainId: '1' },
-        amount: '1000000000000000000',
-        valueUsd: '40',
-      },
-    ];
-
-    const stopLossSpy = jest
-      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
-      .mockResolvedValue(undefined);
-
-    await service.createMarketTrade({
-      marketId: 1,
-      slug: 'cat',
-      amount: 1,
-      timestamp: new Date(),
-      status: TradeStatus.BOUGHT,
-    });
-
-    expect(stopLossSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 10 }),
-      expect.objectContaining({ valueUsd: '40' }),
-      60,
-    );
-  });
-
-  it('evaluateStopLossForPositions should skip resolved markets', async () => {
-    (configService.get as jest.Mock).mockImplementation((key: string) =>
-      key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
-    );
-
-    (service as any).positions = [
+    const positions = [
       {
         market: { id: 1, status: 'RESOLVED' },
         outcome: { onChainId: '1' },
@@ -636,29 +664,37 @@ describe('BotService', () => {
     const repo = predictRepository as any;
     repo.getTradeByMarketId = jest
       .fn()
-      .mockResolvedValueOnce({ id: 1, status: TradeStatus.BOUGHT, amount: 100 })
-      .mockResolvedValueOnce({ id: 2, status: TradeStatus.BOUGHT, amount: 100 });
+      .mockResolvedValueOnce({ id: 1, status: TradeStatus.BOUGHT, amount: 100 });
 
-    const stopLossSpy = jest
-      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
+    const sellPositionSpy = jest
+      .spyOn(tradeService as any, 'sellPosition')
       .mockResolvedValue(undefined);
 
-    await (service as any).evaluateStopLossForPositions();
+    await tradeService.evaluateStopLoss({
+      positions,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      createOrder: jest.fn(),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+    });
 
-    expect(stopLossSpy).toHaveBeenCalledTimes(1);
-    expect(stopLossSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 1 }),
-      expect.objectContaining({ market: { id: 2, status: 'OPEN' } }),
-      60,
+    expect(sellPositionSpy).toHaveBeenCalledTimes(1);
+    expect(sellPositionSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        existingTrade: expect.objectContaining({ id: 1 }),
+        position: expect.objectContaining({ market: { id: 2, status: 'OPEN' } }),
+      }),
     );
   });
 
-  it('evaluateStopLossForPositions should skip sold trades', async () => {
+  it('evaluateStopLoss should skip sold trades', async () => {
     (configService.get as jest.Mock).mockImplementation((key: string) =>
       key === 'PREDICT_LIMIT_LOSS_PERCENTAGE' ? '60' : undefined,
     );
 
-    (service as any).positions = [
+    const positions = [
       {
         market: { id: 3, status: 'OPEN' },
         outcome: { onChainId: '1' },
@@ -674,12 +710,20 @@ describe('BotService', () => {
       amount: 100,
     });
 
-    const stopLossSpy = jest
-      .spyOn(service as any, 'maybeSellPositionIfLossThresholdReached')
+    const sellPositionSpy = jest
+      .spyOn(tradeService as any, 'sellPosition')
       .mockResolvedValue(undefined);
 
-    await (service as any).evaluateStopLossForPositions();
+    await tradeService.evaluateStopLoss({
+      positions,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      createOrder: jest.fn(),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+    });
 
-    expect(stopLossSpy).not.toHaveBeenCalled();
+    expect(sellPositionSpy).not.toHaveBeenCalled();
   });
 });

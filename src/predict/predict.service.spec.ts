@@ -28,6 +28,8 @@ describe('PredictService', () => {
             getTradeConfigByMarketVariant: jest.fn(),
             saveTradeConfig: jest.fn(),
             updateTradeConfigAmount: jest.fn(),
+            getWalletApprovalByWalletAddress: jest.fn(),
+            saveWalletApprovals: jest.fn(),
           },
         },
       ],
@@ -76,6 +78,89 @@ describe('PredictService', () => {
     expect(predictRepository.updateTradeConfigAmount).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
       250,
+    );
+  });
+
+  it('setReferralCode should post and return true', async () => {
+    global.Headers = jest.fn(() => ({
+      append: jest.fn(),
+    })) as any;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(true),
+    } as any);
+
+    const result = await service.setReferralCode({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-api-key',
+      token: 'jwt-token',
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.example.com/account/referral',
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(result).toBe(true);
+  });
+
+  it('setReferralCode should allow custom referral code', async () => {
+    global.Headers = jest.fn(() => ({
+      append: jest.fn(),
+    })) as any;
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(true),
+    } as any);
+
+    await service.setReferralCode({
+      baseUrl: 'https://api.example.com',
+      apiKey: 'test-api-key',
+      token: 'jwt-token',
+      referralCode: 'CUSTOM',
+    });
+
+    const requestBody = JSON.parse(
+      (global.fetch as jest.Mock).mock.calls[0][1].body as string,
+    );
+    expect(requestBody).toEqual({ referralCode: 'CUSTOM' });
+  });
+
+  it('setApprovals should skip when already approved', async () => {
+    predictRepository.getWalletApprovalByWalletAddress.mockResolvedValue({
+      id: 1,
+    } as any);
+
+    const result = await service.setApprovals({
+      predictAccount: '0xPredict',
+      orderBuilder: { setApprovals: jest.fn() } as any,
+    });
+
+    expect(result).toBeUndefined();
+  });
+
+  it('setApprovals should call orderBuilder and persist approval', async () => {
+    predictRepository.getWalletApprovalByWalletAddress.mockResolvedValue(null);
+    predictRepository.saveWalletApprovals.mockResolvedValue({ id: 2 } as any);
+    const orderBuilder = {
+      setApprovals: jest.fn().mockResolvedValue({
+        success: true,
+        transactions: [],
+      }),
+    };
+
+    const result = await service.setApprovals({
+      predictAccount: '0xPredict',
+      orderBuilder: orderBuilder as any,
+    });
+
+    expect(orderBuilder.setApprovals).toHaveBeenCalled();
+    expect(predictRepository.saveWalletApprovals).toHaveBeenCalledWith(
+      '0xPredict',
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+      }),
     );
   });
 });

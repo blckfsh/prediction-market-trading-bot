@@ -27,6 +27,10 @@ describe('WebsocketService', () => {
     jest.clearAllMocks();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('connects once and reuses the client', () => {
     const configService = createConfigService({
       PREDICT_WS_URL: 'wss://example.test/ws',
@@ -98,6 +102,22 @@ describe('WebsocketService', () => {
     service.close();
 
     expect(mockClient.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('refreshes subscriptions on interval', () => {
+    jest.useFakeTimers();
+    const configService = createConfigService({
+      PREDICT_WS_URL: 'wss://example.test/ws',
+      PREDICT_WS_MAX_ATTEMPTS: '5',
+      PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
+      PREDICT_WS_REFRESH_INTERVAL_MS: '10',
+    });
+    const service = new WebsocketService(configService);
+    service.connect();
+
+    jest.advanceTimersByTime(10);
+
+    expect(mockClient.refreshSubscriptions).toHaveBeenCalled();
   });
 });
 
