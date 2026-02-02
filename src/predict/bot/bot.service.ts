@@ -423,6 +423,65 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }): Promise<void> {
     const categories = options?.categories ?? this.categories;
     const shouldSubscribe = options?.subscribeToMarkets ?? false;
+    const formatCreatedAt = (createdAt: string): string => {
+      const createdAtDate = new Date(createdAt);
+      if (Number.isNaN(createdAtDate.getTime())) {
+        return 'Invalid date';
+      }
+      return createdAtDate.toLocaleString();
+    };
+    const getMarketDurationMs = (
+      market: Market,
+      categoryTitle?: string,
+    ): number | null => {
+      const durationSources = [
+        categoryTitle,
+        market.categorySlug,
+        market.title,
+        market.question,
+      ].filter((value): value is string => Boolean(value));
+      const durationRegexes = [
+        /(\d+)\s*minutes?/i,
+        /(\d+)\s*mins?/i,
+        /(\d+)-minutes?/i,
+      ];
+      for (const source of durationSources) {
+        for (const regex of durationRegexes) {
+          const match = source.match(regex);
+          if (match?.[1]) {
+            const minutes = Number(match[1]);
+            if (!Number.isNaN(minutes) && minutes > 0) {
+              return minutes * 60 * 1000;
+            }
+          }
+        }
+      }
+      return null;
+    };
+    const logMarketTimeLeft = (market: Market, categoryTitle?: string): void => {
+      const createdAtDate = new Date(market.createdAt);
+      if (Number.isNaN(createdAtDate.getTime())) {
+        this.logger.log(
+          `Market ${market.id} createdAt is invalid: ${market.createdAt}`,
+        );
+        return;
+      }
+      const durationMs = getMarketDurationMs(market, categoryTitle);
+      if (!durationMs) {
+        this.logger.log(
+          `Market ${market.id} duration not found; cannot compute time left`,
+        );
+        return;
+      }
+      const expiresAtMs = createdAtDate.getTime() + durationMs;
+      const diffMs = Math.max(0, expiresAtMs - Date.now());
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      this.logger.log(
+        `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`,
+      );
+    };
 
     if (categories.length === 0) {
       this.logger.log('No categories found');
@@ -462,6 +521,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           const batch = category.markets.slice(i, i + batchSize);
           const batchResults = await Promise.all(
             batch.map(async (market) => {
+              const createdAt = formatCreatedAt(market.createdAt);
+              logMarketTimeLeft(market, category.title);
               try {
                 const stats = await this.getMarketStatistics(market.id);
                 return {
@@ -469,6 +530,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                   slug: market.categorySlug,
                   // question: market.question,
                   status: market.status,
+                  createdAt,
                   outcomes: market.outcomes
                     .map((outcome) => {
                       const outcomeStatus = outcome.status ?? 'PENDING';
@@ -487,6 +549,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
                   slug: market.categorySlug,
                   question: market.question,
                   status: market.status,
+                  createdAt,
                   outcomes: market.outcomes
                     .map((outcome) => {
                       const outcomeStatus = outcome.status ?? 'PENDING';
