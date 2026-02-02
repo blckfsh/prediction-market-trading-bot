@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { TradeConfig, WalletApproval } from 'generated/prisma/client';
-import { MarketVariant, TradeOptions } from 'lib/zenstack/models';
+import {
+  BuyPositionConfig,
+  SellPositionConfig,
+  WalletApproval,
+} from 'generated/prisma/client';
+import { MarketVariant } from 'lib/zenstack/models';
 import { PredictRepository } from './predict.repository';
 import { REFERRAL_CODE } from 'src/lib/helpers/constants';
 import { OrderBuilder } from '@predictdotfun/sdk';
@@ -12,31 +16,81 @@ export class PredictService {
 
   constructor(private readonly predictRepository: PredictRepository) {}
 
-  async getTradeConfigByMarketVariant(
+  async getBuyPositionConfigByMarketVariant(
     marketVariant: MarketVariant,
-  ): Promise<TradeConfig | null> {
-    return this.predictRepository.getTradeConfigByMarketVariant(marketVariant);
-  }
-
-  async createTradeConfig(
-    marketVariant: MarketVariant,
-    options: TradeOptions,
-    amount: number,
-  ): Promise<TradeConfig> {
-    return this.predictRepository.saveTradeConfig(
+    slugWithSuffix: string,
+  ): Promise<BuyPositionConfig | null> {
+    return this.predictRepository.getBuyPositionConfigByMarketVariant(
       marketVariant,
-      options,
-      amount,
+      slugWithSuffix,
     );
   }
 
-  async updateTradeConfigAmount(
+  async createBuyPositionConfig(
     marketVariant: MarketVariant,
+    slugWithSuffix: string,
     amount: number,
-  ): Promise<TradeConfig> {
-    return this.predictRepository.updateTradeConfigAmount(
+    entry: number,
+  ): Promise<BuyPositionConfig> {
+    return this.predictRepository.saveBuyPositionConfig(
       marketVariant,
+      slugWithSuffix,
       amount,
+      entry,
+    );
+  }
+
+  async updateBuyPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    updates: {
+      amount?: number;
+      entry?: number;
+    },
+  ): Promise<BuyPositionConfig> {
+    return this.predictRepository.updateBuyPositionConfig(
+      marketVariant,
+      slugWithSuffix,
+      updates,
+    );
+  }
+
+  async getSellPositionConfigByMarketVariant(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+  ): Promise<SellPositionConfig | null> {
+    return this.predictRepository.getSellPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
+  }
+
+  async createSellPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    stopLossPercentage: number,
+    amountPercentage: number,
+  ): Promise<SellPositionConfig> {
+    return this.predictRepository.saveSellPositionConfig(
+      marketVariant,
+      slugWithSuffix,
+      stopLossPercentage,
+      amountPercentage,
+    );
+  }
+
+  async updateSellPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    updates: {
+      stopLossPercentage?: number;
+      amountPercentage?: number;
+    },
+  ): Promise<SellPositionConfig> {
+    return this.predictRepository.updateSellPositionConfig(
+      marketVariant,
+      slugWithSuffix,
+      updates,
     );
   }
 

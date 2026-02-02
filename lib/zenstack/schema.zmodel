@@ -23,16 +23,26 @@ model Trade {
   marketId          Int
   slug              String
   amount            Int
-  transactionHash   String
+  buyOrderHash      String
+  sellOrderHash     String?
   timestamp         DateTime
   status            TradeStatus
 }
 
-model TradeConfig {
-  id        Int          @id @default(autoincrement())
-  marketVariant MarketVariant
-  options   TradeOptions
-  amount    Int
+model BuyPositionConfig {
+  id                Int          @id @default(autoincrement())
+  marketVariant     MarketVariant
+  slugWithSuffix    String
+  amount            Int
+  entry             Int
+}
+
+model SellPositionConfig {
+  id                  Int         @id @default(autoincrement())
+  marketVariant       MarketVariant
+  slugWithSuffix      String
+  stopLossPercentage  Int
+  amountPercentage    Int
 }
 
 model WalletApproval {

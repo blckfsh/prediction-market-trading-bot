@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { MarketVariant, TradeOptions } from '../../lib/zenstack/models';
+import { MarketVariant } from '../../lib/zenstack/models';
 import { PredictRepository } from './predict.repository';
 import { PredictService } from './predict.service';
 
@@ -11,11 +11,20 @@ describe('PredictService', () => {
   let service: PredictService;
   let predictRepository: jest.Mocked<PredictRepository>;
 
-  const tradeConfig = {
+  const buyConfig = {
     id: 1,
     marketVariant: MarketVariant.DEFAULT,
-    options: TradeOptions.BUY,
+    slugWithSuffix: 'crypto-up-down-1',
     amount: 100,
+    entry: 25,
+  };
+
+  const sellConfig = {
+    id: 2,
+    marketVariant: MarketVariant.DEFAULT,
+    slugWithSuffix: 'crypto-up-down-1',
+    stopLossPercentage: 15,
+    amountPercentage: 50,
   };
 
   beforeEach(async () => {
@@ -25,9 +34,12 @@ describe('PredictService', () => {
         {
           provide: PredictRepository,
           useValue: {
-            getTradeConfigByMarketVariant: jest.fn(),
-            saveTradeConfig: jest.fn(),
-            updateTradeConfigAmount: jest.fn(),
+            getBuyPositionConfigByMarketVariant: jest.fn(),
+            saveBuyPositionConfig: jest.fn(),
+            updateBuyPositionConfig: jest.fn(),
+            getSellPositionConfigByMarketVariant: jest.fn(),
+            saveSellPositionConfig: jest.fn(),
+            updateSellPositionConfig: jest.fn(),
             getWalletApprovalByWalletAddress: jest.fn(),
             saveWalletApprovals: jest.fn(),
           },
@@ -39,45 +51,112 @@ describe('PredictService', () => {
     predictRepository = module.get(PredictRepository);
   });
 
-  it('gets trade config by market variant', async () => {
-    predictRepository.getTradeConfigByMarketVariant.mockResolvedValue(
-      tradeConfig,
+  it('gets buy position config by market variant', async () => {
+    predictRepository.getBuyPositionConfigByMarketVariant.mockResolvedValue(
+      buyConfig,
     );
 
     await expect(
-      service.getTradeConfigByMarketVariant(MarketVariant.DEFAULT),
-    ).resolves.toEqual(tradeConfig);
+      service.getBuyPositionConfigByMarketVariant(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+      ),
+    ).resolves.toEqual(buyConfig);
 
-    expect(predictRepository.getTradeConfigByMarketVariant).toHaveBeenCalledWith(
-      MarketVariant.DEFAULT,
-    );
+    expect(
+      predictRepository.getBuyPositionConfigByMarketVariant,
+    ).toHaveBeenCalledWith(MarketVariant.DEFAULT, 'crypto-up-down-1');
   });
 
-  it('creates trade config', async () => {
-    predictRepository.saveTradeConfig.mockResolvedValue(tradeConfig);
+  it('creates buy position config', async () => {
+    predictRepository.saveBuyPositionConfig.mockResolvedValue(buyConfig);
 
     await expect(
-      service.createTradeConfig(MarketVariant.DEFAULT, TradeOptions.BUY, 100),
-    ).resolves.toEqual(tradeConfig);
+      service.createBuyPositionConfig(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        100,
+        25,
+      ),
+    ).resolves.toEqual(buyConfig);
 
-    expect(predictRepository.saveTradeConfig).toHaveBeenCalledWith(
+    expect(predictRepository.saveBuyPositionConfig).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
-      TradeOptions.BUY,
+      'crypto-up-down-1',
       100,
+      25,
     );
   });
 
-  it('updates trade config amount', async () => {
-    const updatedConfig = { ...tradeConfig, amount: 250 };
-    predictRepository.updateTradeConfigAmount.mockResolvedValue(updatedConfig);
+  it('updates buy position config', async () => {
+    const updatedConfig = { ...buyConfig, amount: 250, entry: 30 };
+    predictRepository.updateBuyPositionConfig.mockResolvedValue(updatedConfig);
 
     await expect(
-      service.updateTradeConfigAmount(MarketVariant.DEFAULT, 250),
+      service.updateBuyPositionConfig(MarketVariant.DEFAULT, 'crypto-up-down-1', {
+        amount: 250,
+        entry: 30,
+      }),
     ).resolves.toEqual(updatedConfig);
 
-    expect(predictRepository.updateTradeConfigAmount).toHaveBeenCalledWith(
+    expect(predictRepository.updateBuyPositionConfig).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
-      250,
+      'crypto-up-down-1',
+      { amount: 250, entry: 30 },
+    );
+  });
+
+  it('gets sell position config by market variant', async () => {
+    predictRepository.getSellPositionConfigByMarketVariant.mockResolvedValue(
+      sellConfig,
+    );
+
+    await expect(
+      service.getSellPositionConfigByMarketVariant(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+      ),
+    ).resolves.toEqual(sellConfig);
+
+    expect(
+      predictRepository.getSellPositionConfigByMarketVariant,
+    ).toHaveBeenCalledWith(MarketVariant.DEFAULT, 'crypto-up-down-1');
+  });
+
+  it('creates sell position config', async () => {
+    predictRepository.saveSellPositionConfig.mockResolvedValue(sellConfig);
+
+    await expect(
+      service.createSellPositionConfig(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        15,
+        50,
+      ),
+    ).resolves.toEqual(sellConfig);
+
+    expect(predictRepository.saveSellPositionConfig).toHaveBeenCalledWith(
+      MarketVariant.DEFAULT,
+      'crypto-up-down-1',
+      15,
+      50,
+    );
+  });
+
+  it('updates sell position config', async () => {
+    const updatedConfig = { ...sellConfig, stopLossPercentage: 20 };
+    predictRepository.updateSellPositionConfig.mockResolvedValue(updatedConfig);
+
+    await expect(
+      service.updateSellPositionConfig(MarketVariant.DEFAULT, 'crypto-up-down-1', {
+        stopLossPercentage: 20,
+      }),
+    ).resolves.toEqual(updatedConfig);
+
+    expect(predictRepository.updateSellPositionConfig).toHaveBeenCalledWith(
+      MarketVariant.DEFAULT,
+      'crypto-up-down-1',
+      { stopLossPercentage: 20 },
     );
   });
 

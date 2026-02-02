@@ -33,9 +33,14 @@ export class SchemaType implements SchemaDef {
                     name: "amount",
                     type: "Int"
                 },
-                transactionHash: {
-                    name: "transactionHash",
+                buyOrderHash: {
+                    name: "buyOrderHash",
                     type: "String"
+                },
+                sellOrderHash: {
+                    name: "sellOrderHash",
+                    type: "String",
+                    optional: true
                 },
                 timestamp: {
                     name: "timestamp",
@@ -51,8 +56,8 @@ export class SchemaType implements SchemaDef {
                 id: { type: "Int" }
             }
         },
-        TradeConfig: {
-            name: "TradeConfig",
+        BuyPositionConfig: {
+            name: "BuyPositionConfig",
             fields: {
                 id: {
                     name: "id",
@@ -65,12 +70,48 @@ export class SchemaType implements SchemaDef {
                     name: "marketVariant",
                     type: "MarketVariant"
                 },
-                options: {
-                    name: "options",
-                    type: "TradeOptions"
+                slugWithSuffix: {
+                    name: "slugWithSuffix",
+                    type: "String"
                 },
                 amount: {
                     name: "amount",
+                    type: "Int"
+                },
+                entry: {
+                    name: "entry",
+                    type: "Int"
+                }
+            },
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" }
+            }
+        },
+        SellPositionConfig: {
+            name: "SellPositionConfig",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                marketVariant: {
+                    name: "marketVariant",
+                    type: "MarketVariant"
+                },
+                slugWithSuffix: {
+                    name: "slugWithSuffix",
+                    type: "String"
+                },
+                stopLossPercentage: {
+                    name: "stopLossPercentage",
+                    type: "Int"
+                },
+                amountPercentage: {
+                    name: "amountPercentage",
                     type: "Int"
                 }
             },
