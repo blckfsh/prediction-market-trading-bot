@@ -25,7 +25,7 @@ import { PredictRepository } from '../predict.repository';
 import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
 import {
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
-  getLimitLossPercentage as getLimitLossPercentageHelper,
+  getMarketTimeLeftSeconds,
   isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
 } from 'src/lib/helpers/bot';
 import { MIN_PROFIT_USD, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
@@ -49,6 +49,8 @@ export class TradeService {
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
+    getStopLossPercentageForMarketSlug: (slug: string) => number | null;
+    getAmountPercentageForMarketSlug: (slug: string) => number | null;
     createOrder: (body: CreateOrderBody) => Promise<CreateOrderResponse>;
     orderBuilder: OrderBuilder;
     signer: Wallet;
@@ -58,19 +60,34 @@ export class TradeService {
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,
+      getStopLossPercentageForMarketSlug,
+      getAmountPercentageForMarketSlug,
       createOrder,
       orderBuilder,
       signer,
     } = params;
-    const limitLossPercentage = getLimitLossPercentageHelper(
-      this.configService,
-    );
-    if (limitLossPercentage === null) {
-      return;
-    }
 
     for (const position of positions) {
       if (position.market.status === MarketStatus.RESOLVED) {
+        continue;
+      }
+
+      const stopLossPercentage = getStopLossPercentageForMarketSlug(
+        position.market.categorySlug,
+      );
+      if (stopLossPercentage === null) {
+        this.logger.warn(
+          `Stop-loss check skipped. No configured stop-loss for market ${position.market.id} slug ${position.market.categorySlug}.`,
+        );
+        continue;
+      }
+      const amountPercentage = getAmountPercentageForMarketSlug(
+        position.market.categorySlug,
+      );
+      if (amountPercentage === null) {
+        this.logger.warn(
+          `Stop-loss check skipped. No configured amount percentage for market ${position.market.id} slug ${position.market.categorySlug}.`,
+        );
         continue;
       }
 
@@ -102,7 +119,7 @@ export class TradeService {
           !isPositionReachedThreshold({
             entryValueUsd,
             currentValueUsd,
-            limitLossPercentage,
+            stopLossPercentage,
           })
         ) {
           continue;
@@ -111,7 +128,7 @@ export class TradeService {
         const lossPercentage =
           ((entryValueUsd - currentValueUsd) / entryValueUsd) * 100;
         this.logger.warn(
-          `Loss limit reached for market ${position.market.id}: ${lossPercentage.toFixed(2)}% >= ${limitLossPercentage}%. Selling position.`,
+          `Stop-loss reached for market ${position.market.id}: ${lossPercentage.toFixed(2)}% >= ${stopLossPercentage}%. Selling position.`,
         );
 
         await this.sellPosition({
@@ -119,6 +136,7 @@ export class TradeService {
           position,
           orderBuilder,
           signer,
+          amountPercentage,
           getOrderBookByMarketId,
           getMarketById,
           subscribeToOrderbook,
@@ -182,6 +200,7 @@ export class TradeService {
     marketTradeLastAttemptAt: Map<number, number>;
     getMarketSlugById: (marketId: number) => string | null;
     getTradeAmountForMarketSlug: (slug: string) => number;
+    getEntrySecondsForMarketSlug: (slug: string) => number | null;
     orderBuilder: OrderBuilder;
     signer: Wallet;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
@@ -199,6 +218,7 @@ export class TradeService {
       marketTradeLastAttemptAt,
       getMarketSlugById,
       getTradeAmountForMarketSlug,
+      getEntrySecondsForMarketSlug,
       orderBuilder,
       signer,
       getOrderBookByMarketId,
@@ -227,6 +247,14 @@ export class TradeService {
       if (!slug) {
         throw new Error(`Market slug not found for marketId ${marketId}`);
       }
+      
+      const entrySeconds = getEntrySecondsForMarketSlug(slug);
+      if (entrySeconds === null) {
+        this.logger.warn(
+          `Skipping auto-trade for market ${marketId}. Entry seconds not configured for slug ${slug}.`,
+        );
+        return;
+      }
       const amount = getTradeAmountForMarketSlug(slug);
       const marketTrade: SaveMarketTradeInput = {
         marketId,
@@ -239,6 +267,7 @@ export class TradeService {
         market: marketTrade,
         orderBuilder,
         signer,
+        entrySeconds,
         getOrderBookByMarketId,
         getMarketById,
         subscribeToOrderbook,
@@ -259,6 +288,7 @@ export class TradeService {
     market: SaveMarketTradeInput;
     orderBuilder: OrderBuilder;
     signer: Wallet;
+    entrySeconds?: number | null;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
@@ -273,6 +303,7 @@ export class TradeService {
       market,
       orderBuilder,
       signer,
+      entrySeconds,
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,
@@ -294,6 +325,29 @@ export class TradeService {
     }
 
     const marketData = await getMarketById(marketId);
+    const timeLeftSeconds = getMarketTimeLeftSeconds(marketData.data);
+    if (timeLeftSeconds === 0) {
+      this.logger.warn(
+        `Skipping auto-trade for market ${marketId}. Market time left is 0s.`,
+      );
+      return;
+    }
+    if (entrySeconds !== null && entrySeconds !== undefined) {
+      const createdAtMs = new Date(marketData.data.createdAt).getTime();
+      if (Number.isNaN(createdAtMs)) {
+        this.logger.warn(
+          `Skipping auto-trade for market ${marketId}. Invalid createdAt: ${marketData.data.createdAt}`,
+        );
+        return;
+      }
+      const readyAtMs = createdAtMs + entrySeconds * 1000;
+      if (Date.now() < readyAtMs) {
+        this.logger.warn(
+          `Skipping auto-trade for market ${marketId}. Entry not reached yet (createdAt: ${marketData.data.createdAt}, entrySeconds: ${entrySeconds}).`,
+        );
+        return;
+      }
+    }
     this.logger.log(
       `Market ${marketId} feeRateBps: ${marketData.data.feeRateBps}`,
     );
@@ -430,7 +484,7 @@ export class TradeService {
       return;
     }
 
-    market.transactionHash =
+    market.buyOrderHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
     return this.predictRepository.saveMarketTrade(market);
   }
@@ -440,6 +494,7 @@ export class TradeService {
     position: Position;
     orderBuilder: OrderBuilder;
     signer: Wallet;
+    amountPercentage: number;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
@@ -450,6 +505,7 @@ export class TradeService {
       position,
       orderBuilder,
       signer,
+      amountPercentage,
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,
@@ -469,7 +525,17 @@ export class TradeService {
       bids: normalizeDepth(book.bids),
     };
 
-    const quantityWei = BigInt(position.amount);
+    if (!Number.isFinite(amountPercentage) || amountPercentage <= 0) {
+      this.logger.warn(
+        `Skipping sell for market ${position.market.id}. Invalid amount percentage: ${amountPercentage}`,
+      );
+      return;
+    }
+    const baseQuantityWei = BigInt(position.amount);
+    const percentage =
+      amountPercentage >= 100 ? 100 : Math.floor(amountPercentage);
+    const quantityWei =
+      (baseQuantityWei * BigInt(percentage)) / 100n;
     if (quantityWei <= 0n) {
       this.logger.warn(
         `Skipping sell for market ${position.market.id}. Quantity is less than or equal to 0`,

@@ -49,6 +49,8 @@ interface Market {
   polymarketConditionIds: string[];
   kalshiMarketTicker: string;
   categorySlug: string;
+  boostStartsAt?: string | null;
+  boostEndsAt?: string | null;
   createdAt: string;
   decimalPrecision: number;
 }
@@ -203,7 +205,7 @@ interface SaveMarketTradeInput {
   marketId: number;
   slug: string;
   amount: number;
-  transactionHash?: string;
+  buyOrderHash?: string;
   timestamp: Date;
   status: TradeStatus;
 }

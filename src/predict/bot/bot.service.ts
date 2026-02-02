@@ -16,7 +16,8 @@ import {
 } from '@predictdotfun/sdk';
 import {
   MarketVariant,
-  TradeConfig,
+  BuyPositionConfig,
+  SellPositionConfig,
 } from 'generated/prisma/client';
 import { BalanceResponse } from 'src/predict/types/balance.types';
 import {
@@ -49,6 +50,8 @@ import {
   startCategoryRefreshLoop as startCategoryRefreshLoopHelper,
   startPositionsRefreshLoop as startPositionsRefreshLoopHelper,
   shouldLogRealtimeEvent as shouldLogRealtimeEventHelper,
+  buildBuyConfigKey,
+  logMarketTimeLeft,
 } from 'src/lib/helpers/bot';
 import { WebsocketService } from 'src/predict/websocket/websocket.service';
 import {
@@ -61,6 +64,7 @@ import {
 import { TradeService } from 'src/predict/trade/trade.service';
 import { RedeemService } from 'src/predict/redeem/redeem.service';
 import { PredictService } from 'src/predict/predict.service';
+import { EXPECTED_SUFFIX } from 'src/lib/helpers/constants';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -74,7 +78,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private token: string | null = null;
   private categories: Category[] = [];
   private positions: Position[] = [];
-  private tradeConfigsByMarketVariant = new Map<MarketVariant, TradeConfig>();
+  private buyPositionConfigsByKey = new Map<string, BuyPositionConfig>();
+  private sellPositionConfigsByKey = new Map<string, SellPositionConfig>();
   private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
   private readonly subscribedOrderbooks = new Set<number>();
   private readonly subscribedPriceFeeds = new Set<number>();
@@ -129,8 +134,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.getAllMarkets();
     this.logger.log('Searching categories...');
     await this.initializeCategories();
-    this.logger.log('Loading trade configs...');
-    await this.initializeTradeConfigs();
+    this.logger.log('Loading buy position configs...');
+    await this.initializeBuyPositionConfigs();
+    this.logger.log('Loading sell position configs...');
+    await this.initializeSellPositionConfigs();
     await this.initializeCategoryTable();
     this.logger.log('Checking for positions...');
     await this.initializePositionTable();
@@ -369,12 +376,22 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private async initializeTradeConfigs() {
-    const tradeConfigs = await this.predictRepository.getAllTradeConfigs();
-    this.tradeConfigsByMarketVariant = new Map(
-      tradeConfigs.map((tradeConfig) => [
-        tradeConfig.marketVariant,
-        tradeConfig,
+  private async initializeBuyPositionConfigs() {
+    const buyConfigs = await this.predictRepository.getAllBuyPositionConfigs();
+    this.buyPositionConfigsByKey = new Map(
+      buyConfigs.map((config) => [
+        buildBuyConfigKey(config.slugWithSuffix),
+        config,
+      ]),
+    );
+  }
+
+  private async initializeSellPositionConfigs() {
+    const sellConfigs = await this.predictRepository.getAllSellPositionConfigs();
+    this.sellPositionConfigsByKey = new Map(
+      sellConfigs.map((config) => [
+        buildBuyConfigKey(config.slugWithSuffix),
+        config,
       ]),
     );
   }
@@ -430,58 +447,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       }
       return createdAtDate.toLocaleString();
     };
-    const getMarketDurationMs = (
-      market: Market,
-      categoryTitle?: string,
-    ): number | null => {
-      const durationSources = [
-        categoryTitle,
-        market.categorySlug,
-        market.title,
-        market.question,
-      ].filter((value): value is string => Boolean(value));
-      const durationRegexes = [
-        /(\d+)\s*minutes?/i,
-        /(\d+)\s*mins?/i,
-        /(\d+)-minutes?/i,
-      ];
-      for (const source of durationSources) {
-        for (const regex of durationRegexes) {
-          const match = source.match(regex);
-          if (match?.[1]) {
-            const minutes = Number(match[1]);
-            if (!Number.isNaN(minutes) && minutes > 0) {
-              return minutes * 60 * 1000;
-            }
-          }
-        }
-      }
-      return null;
-    };
-    const logMarketTimeLeft = (market: Market, categoryTitle?: string): void => {
-      const createdAtDate = new Date(market.createdAt);
-      if (Number.isNaN(createdAtDate.getTime())) {
-        this.logger.log(
-          `Market ${market.id} createdAt is invalid: ${market.createdAt}`,
-        );
-        return;
-      }
-      const durationMs = getMarketDurationMs(market, categoryTitle);
-      if (!durationMs) {
-        this.logger.log(
-          `Market ${market.id} duration not found; cannot compute time left`,
-        );
-        return;
-      }
-      const expiresAtMs = createdAtDate.getTime() + durationMs;
-      const diffMs = Math.max(0, expiresAtMs - Date.now());
-      const totalSeconds = Math.floor(diffMs / 1000);
-      const minutes = Math.floor(totalSeconds / 60);
-      const seconds = totalSeconds % 60;
-      this.logger.log(
-        `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`,
-      );
-    };
 
     if (categories.length === 0) {
       this.logger.log('No categories found');
@@ -522,7 +487,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           const batchResults = await Promise.all(
             batch.map(async (market) => {
               const createdAt = formatCreatedAt(market.createdAt);
-              logMarketTimeLeft(market, category.title);
+              logMarketTimeLeft(this.logger, market);
               try {
                 const stats = await this.getMarketStatistics(market.id);
                 return {
@@ -586,6 +551,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       getOrderBookByMarketId: this.getOrderBookByMarketId.bind(this),
       getMarketById: this.getMarketById.bind(this),
       subscribeToOrderbook: this.subscribeToOrderbook.bind(this),
+      getStopLossPercentageForMarketSlug:
+        this.getStopLossPercentageForMarketSlug.bind(this),
+      getAmountPercentageForMarketSlug:
+        this.getAmountPercentageForMarketSlug.bind(this),
       createOrder: (createOrderBody) =>
         this.tradeService.createOrder({
           baseUrl: this.baseUrl!,
@@ -708,6 +677,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           marketTradeLastAttemptAt: this.marketTradeLastAttemptAt,
           getMarketSlugById: this.getMarketSlugById.bind(this),
           getTradeAmountForMarketSlug: this.getTradeAmountForMarketSlug.bind(this),
+          getEntrySecondsForMarketSlug:
+            this.getEntrySecondsForMarketSlug.bind(this),
           orderBuilder: this.orderBuilder!,
           signer: this.signer!,
           getOrderBookByMarketId: this.getOrderBookByMarketId.bind(this),
@@ -821,14 +792,20 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return data;
   }
 
-  async getTradeConfigByMarketVariant(
+  async getBuyPositionConfigByMarketVariant(
     marketVariant: MarketVariant,
-  ): Promise<TradeConfig | null> {
-    const cached = this.tradeConfigsByMarketVariant.get(marketVariant);
+    slugWithSuffix: string,
+  ): Promise<BuyPositionConfig | null> {
+    const cached = this.buyPositionConfigsByKey.get(
+      buildBuyConfigKey(slugWithSuffix),
+    );
     if (cached) {
       return cached;
     }
-    return this.predictRepository.getTradeConfigByMarketVariant(marketVariant);
+    return this.predictRepository.getBuyPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
   }
 
   async getMarketById(marketId: number): Promise<MarketDataResponse> {
@@ -1076,21 +1053,89 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       );
       return 1;
     }
-    const tradeConfig = this.tradeConfigsByMarketVariant.get(
-      category.marketVariant,
-    );
-    if (!tradeConfig) {
+
+    // Trade for prediction markets with expected suffix
+    if (!slug.includes(EXPECTED_SUFFIX)) {
       this.logger.warn(
-        `Trade amount fallback to default (1). No trade config for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
+        `Trade amount fallback to default (1). No ${EXPECTED_SUFFIX} suffix found for slug ${slug}.`,
+      );
+      return 1;
+    }
+    const buyConfig = this.buyPositionConfigsByKey.get(
+      buildBuyConfigKey(EXPECTED_SUFFIX),
+    );
+    if (!buyConfig) {
+      this.logger.warn(
+        `Trade amount fallback to default (1). No buy position config for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
       );
       return 1;
     }
     this.logger.log(
-      `Trade amount resolved to ${tradeConfig.amount}\n` +
+      `Trade amount resolved to ${buyConfig.amount}\n` +
         `MarketVariant: ${category.marketVariant}\n` +
         `Slug: ${slug}\n` +
         `Category: ${category.slug}`,
     );
-    return tradeConfig.amount;
+    return buyConfig.amount;
+  }
+
+  private getEntrySecondsForMarketSlug(slug: string): number | null {
+    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
+    if (!hasExpectedSuffix) {
+      this.logger.warn(
+        `Entry check skipped. No expected suffix found for slug ${slug}.`,
+      );
+      return null;
+    }
+    const buyConfig = this.buyPositionConfigsByKey.get(
+      buildBuyConfigKey(EXPECTED_SUFFIX),
+    );
+    if (!buyConfig) {
+      this.logger.warn(
+        `Entry check skipped. No buy position config for slug ${slug}.`,
+      );
+      return null;
+    }
+    return buyConfig.entry;
+  }
+
+  private getStopLossPercentageForMarketSlug(slug: string): number | null {
+    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
+    if (!hasExpectedSuffix) {
+      this.logger.warn(
+        `Stop-loss check skipped. No expected suffix found for slug ${slug}.`,
+      );
+      return null;
+    }
+    const sellConfig = this.sellPositionConfigsByKey.get(
+      buildBuyConfigKey(EXPECTED_SUFFIX),
+    );
+    if (!sellConfig) {
+      this.logger.warn(
+        `Stop-loss check skipped. No sell position config for slug ${slug}.`,
+      );
+      return null;
+    }
+    return sellConfig.stopLossPercentage;
+  }
+
+  private getAmountPercentageForMarketSlug(slug: string): number | null {
+    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
+    if (!hasExpectedSuffix) {
+      this.logger.warn(
+        `Amount percentage check skipped. No expected suffix found for slug ${slug}.`,
+      );
+      return null;
+    }
+    const sellConfig = this.sellPositionConfigsByKey.get(
+      buildBuyConfigKey(EXPECTED_SUFFIX),
+    );
+    if (!sellConfig) {
+      this.logger.warn(
+        `Amount percentage check skipped. No sell position config for slug ${slug}.`,
+      );
+      return null;
+    }
+    return sellConfig.amountPercentage;
   }
 }

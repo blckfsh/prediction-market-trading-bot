@@ -30,18 +30,6 @@ function getAutoTradeIntervalMs(configService: ConfigService): number {
   return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
 }
 
-function getLimitLossPercentage(configService: ConfigService): number | null {
-  const raw = configService.get<string>('PREDICT_LIMIT_LOSS_PERCENTAGE');
-  if (!raw || raw.trim() === '') {
-    return null;
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
-    return null;
-  }
-  return parsed;
-}
-
 function isWebsocketAutoTradeEnabled(configService: ConfigService): boolean {
   const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE');
   if (!raw || raw.trim() === '') {
@@ -229,10 +217,87 @@ function shouldLogRealtimeEvent(params: {
   return true;
 }
 
+function buildBuyConfigKey(
+  suffix: string, 
+): string {
+  return suffix;
+}
+
+function getMarketDurationMs(
+  market: Pick<
+    Category['markets'][number],
+    'boostStartsAt' | 'boostEndsAt'
+  >,
+): number | null {
+  const boostStart = market.boostStartsAt
+    ? new Date(market.boostStartsAt)
+    : null;
+  const boostEnd = market.boostEndsAt ? new Date(market.boostEndsAt) : null;
+  if (
+    boostStart &&
+    boostEnd &&
+    !Number.isNaN(boostStart.getTime()) &&
+    !Number.isNaN(boostEnd.getTime())
+  ) {
+    const boostDurationMs = boostEnd.getTime() - boostStart.getTime();
+    if (boostDurationMs > 0) {
+      return boostDurationMs;
+    }
+  }
+  return null;
+}
+
+function logMarketTimeLeft(
+  logger: { log: (message: string) => void },
+  market: Pick<
+    Category['markets'][number],
+    'id' | 'createdAt' | 'boostStartsAt' | 'boostEndsAt'
+  >,
+): void {
+  const createdAtDate = new Date(market.createdAt);
+  if (Number.isNaN(createdAtDate.getTime())) {
+    logger.log(`Market ${market.id} createdAt is invalid: ${market.createdAt}`);
+    return;
+  }
+  const durationMs = getMarketDurationMs(market);
+  if (!durationMs) {
+    logger.log(
+      `Market ${market.id} duration not found; cannot compute time left`,
+    );
+    return;
+  }
+  const expiresAtMs = createdAtDate.getTime() + durationMs;
+  const diffMs = Math.max(0, expiresAtMs - Date.now());
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  logger.log(
+    `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`,
+  );
+}
+
+function getMarketTimeLeftSeconds(
+  market: Pick<
+    Category['markets'][number],
+    'createdAt' | 'boostStartsAt' | 'boostEndsAt'
+  >,
+): number | null {
+  const createdAtDate = new Date(market.createdAt);
+  if (Number.isNaN(createdAtDate.getTime())) {
+    return null;
+  }
+  const durationMs = getMarketDurationMs(market);
+  if (!durationMs) {
+    return null;
+  }
+  const expiresAtMs = createdAtDate.getTime() + durationMs;
+  const diffMs = Math.max(0, expiresAtMs - Date.now());
+  return Math.floor(diffMs / 1000);
+}
+
 export {
   getCategoryRefreshIntervalMs,
   getAutoTradeIntervalMs,
-  getLimitLossPercentage,
   isWebsocketAutoTradeEnabled,
   isBotEnabled,
   isWebsocketEnabled,
@@ -243,4 +308,8 @@ export {
   refreshPositionsTable,
   getTopicLabel,
   shouldLogRealtimeEvent,
+  buildBuyConfigKey,
+  getMarketDurationMs,
+  logMarketTimeLeft,
+  getMarketTimeLeftSeconds,
 };

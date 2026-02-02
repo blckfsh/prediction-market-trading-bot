@@ -1,7 +1,7 @@
 import { NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { MarketVariant, TradeOptions } from '../../lib/zenstack/models';
+import { MarketVariant } from '../../lib/zenstack/models';
 import { PredictController } from './predict.controller';
 import { PredictService } from 'src/predict/predict.service';
 
@@ -13,11 +13,20 @@ describe('PredictController', () => {
   let controller: PredictController;
   let predictService: jest.Mocked<PredictService>;
 
-  const tradeConfig = {
+  const buyConfig = {
     id: 1,
     marketVariant: MarketVariant.DEFAULT,
-    options: TradeOptions.BUY,
+    slugWithSuffix: 'crypto-up-down-1',
     amount: 100,
+    entry: 25,
+  };
+
+  const sellConfig = {
+    id: 2,
+    marketVariant: MarketVariant.DEFAULT,
+    slugWithSuffix: 'crypto-up-down-1',
+    stopLossPercentage: 15,
+    amountPercentage: 50,
   };
 
   beforeEach(async () => {
@@ -27,9 +36,12 @@ describe('PredictController', () => {
         {
           provide: PredictService,
           useValue: {
-            getTradeConfigByMarketVariant: jest.fn(),
-            createTradeConfig: jest.fn(),
-            updateTradeConfigAmount: jest.fn(),
+            getBuyPositionConfigByMarketVariant: jest.fn(),
+            createBuyPositionConfig: jest.fn(),
+            updateBuyPositionConfig: jest.fn(),
+            getSellPositionConfigByMarketVariant: jest.fn(),
+            createSellPositionConfig: jest.fn(),
+            updateSellPositionConfig: jest.fn(),
           },
         },
         {
@@ -45,62 +57,148 @@ describe('PredictController', () => {
     predictService = module.get(PredictService);
   });
 
-  describe('getTradeConfigByMarketVariant', () => {
-    it('returns trade config when found', async () => {
-      predictService.getTradeConfigByMarketVariant.mockResolvedValue(tradeConfig);
+  describe('getBuyPositionConfigByMarketVariant', () => {
+    it('returns buy position config when found', async () => {
+      predictService.getBuyPositionConfigByMarketVariant.mockResolvedValue(
+        buyConfig,
+      );
 
       await expect(
-        controller.getTradeConfigByMarketVariant(MarketVariant.DEFAULT),
-      ).resolves.toEqual(tradeConfig);
+        controller.getBuyPositionConfigByMarketVariant(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+        ),
+      ).resolves.toEqual(buyConfig);
 
-      expect(predictService.getTradeConfigByMarketVariant).toHaveBeenCalledWith(
-        MarketVariant.DEFAULT,
-      );
+      expect(
+        predictService.getBuyPositionConfigByMarketVariant,
+      ).toHaveBeenCalledWith(MarketVariant.DEFAULT, 'crypto-up-down-1');
     });
 
     it('throws NotFoundException when missing', async () => {
-      predictService.getTradeConfigByMarketVariant.mockResolvedValue(null);
+      predictService.getBuyPositionConfigByMarketVariant.mockResolvedValue(null);
 
       await expect(
-        controller.getTradeConfigByMarketVariant(MarketVariant.DEFAULT),
+        controller.getBuyPositionConfigByMarketVariant(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+        ),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 
-  describe('createTradeConfig', () => {
-    it('creates trade config via service', async () => {
-      predictService.createTradeConfig.mockResolvedValue(tradeConfig);
+  describe('createBuyPositionConfig', () => {
+    it('creates buy position config via service', async () => {
+      predictService.createBuyPositionConfig.mockResolvedValue(buyConfig);
 
       await expect(
-        controller.createTradeConfig({
+        controller.createBuyPositionConfig({
           marketVariant: MarketVariant.DEFAULT,
-          options: TradeOptions.BUY,
+          slugWithSuffix: 'crypto-up-down-1',
           amount: 100,
+          entry: 25,
         }),
-      ).resolves.toEqual(tradeConfig);
+      ).resolves.toEqual(buyConfig);
 
-      expect(predictService.createTradeConfig).toHaveBeenCalledWith(
+      expect(predictService.createBuyPositionConfig).toHaveBeenCalledWith(
         MarketVariant.DEFAULT,
-        TradeOptions.BUY,
+        'crypto-up-down-1',
         100,
+        25,
       );
     });
   });
 
-  describe('updateTradeConfigAmount', () => {
-    it('updates trade config amount via service', async () => {
-      const updatedConfig = { ...tradeConfig, amount: 250 };
-      predictService.updateTradeConfigAmount.mockResolvedValue(updatedConfig);
+  describe('updateBuyPositionConfig', () => {
+    it('updates buy position config via service', async () => {
+      const updatedConfig = { ...buyConfig, amount: 250 };
+      predictService.updateBuyPositionConfig.mockResolvedValue(updatedConfig);
 
       await expect(
-        controller.updateTradeConfigAmount(MarketVariant.DEFAULT, {
-          amount: 250,
-        }),
+        controller.updateBuyPositionConfig(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+          { amount: 250 },
+        ),
       ).resolves.toEqual(updatedConfig);
 
-      expect(predictService.updateTradeConfigAmount).toHaveBeenCalledWith(
+      expect(predictService.updateBuyPositionConfig).toHaveBeenCalledWith(
         MarketVariant.DEFAULT,
-        250,
+        'crypto-up-down-1',
+        { amount: 250 },
+      );
+    });
+  });
+
+  describe('getSellPositionConfigByMarketVariant', () => {
+    it('returns sell position config when found', async () => {
+      predictService.getSellPositionConfigByMarketVariant.mockResolvedValue(
+        sellConfig,
+      );
+
+      await expect(
+        controller.getSellPositionConfigByMarketVariant(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+        ),
+      ).resolves.toEqual(sellConfig);
+
+      expect(
+        predictService.getSellPositionConfigByMarketVariant,
+      ).toHaveBeenCalledWith(MarketVariant.DEFAULT, 'crypto-up-down-1');
+    });
+
+    it('throws NotFoundException when missing', async () => {
+      predictService.getSellPositionConfigByMarketVariant.mockResolvedValue(null);
+
+      await expect(
+        controller.getSellPositionConfigByMarketVariant(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('createSellPositionConfig', () => {
+    it('creates sell position config via service', async () => {
+      predictService.createSellPositionConfig.mockResolvedValue(sellConfig);
+
+      await expect(
+        controller.createSellPositionConfig({
+          marketVariant: MarketVariant.DEFAULT,
+          slugWithSuffix: 'crypto-up-down-1',
+          stopLossPercentage: 15,
+          amountPercentage: 50,
+        }),
+      ).resolves.toEqual(sellConfig);
+
+      expect(predictService.createSellPositionConfig).toHaveBeenCalledWith(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        15,
+        50,
+      );
+    });
+  });
+
+  describe('updateSellPositionConfig', () => {
+    it('updates sell position config via service', async () => {
+      const updatedConfig = { ...sellConfig, stopLossPercentage: 20 };
+      predictService.updateSellPositionConfig.mockResolvedValue(updatedConfig);
+
+      await expect(
+        controller.updateSellPositionConfig(
+          MarketVariant.DEFAULT,
+          'crypto-up-down-1',
+          { stopLossPercentage: 20 },
+        ),
+      ).resolves.toEqual(updatedConfig);
+
+      expect(predictService.updateSellPositionConfig).toHaveBeenCalledWith(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        { stopLossPercentage: 20 },
       );
     });
   });

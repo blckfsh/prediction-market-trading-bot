@@ -3,21 +3,21 @@ import { parseEther, WeiPerEther } from 'ethers';
 export const isPositionReachedThreshold = (params: {
   entryValueUsd: number;
   currentValueUsd: number;
-  limitLossPercentage: number;
+  stopLossPercentage: number;
 }): boolean => {
-  const { entryValueUsd, currentValueUsd, limitLossPercentage } = params;
+  const { entryValueUsd, currentValueUsd, stopLossPercentage } = params;
   if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
     return false;
   }
   if (!Number.isFinite(currentValueUsd)) {
     return false;
   }
-  if (!Number.isFinite(limitLossPercentage) || limitLossPercentage < 0) {
+  if (!Number.isFinite(stopLossPercentage) || stopLossPercentage < 0) {
     return false;
   }
   const lossPercentage =
     ((entryValueUsd - currentValueUsd) / entryValueUsd) * 100;
-  return lossPercentage >= limitLossPercentage;
+  return lossPercentage >= stopLossPercentage;
 };
 
 export const getLimitOrderPricing = (params: {

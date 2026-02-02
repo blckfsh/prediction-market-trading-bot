@@ -6,7 +6,7 @@ import {
 import { ZeroHash } from 'ethers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SaveMarketTradeInput } from 'src/predict/types/market.types';
-import { MarketVariant, TradeOptions } from 'lib/zenstack/models';
+import { MarketVariant } from 'lib/zenstack/models';
 import { TradeStatus } from 'generated/prisma/client';
 
 @Injectable()
@@ -25,21 +25,37 @@ export class PredictRepository {
     });
   }
 
-  async getTradeConfigByMarketVariant(marketVariant: MarketVariant) {
-    return this.prisma.tradeConfig.findFirst({
-      where: { marketVariant },
+  async getBuyPositionConfigByMarketVariant(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+  ) {
+    return this.prisma.buyPositionConfig.findFirst({
+      where: { marketVariant, slugWithSuffix },
     });
   }
 
-  async getAllTradeConfigs() {
-    return this.prisma.tradeConfig.findMany();
+  async getAllBuyPositionConfigs() {
+    return this.prisma.buyPositionConfig.findMany();
+  }
+
+  async getSellPositionConfigByMarketVariant(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+  ) {
+    return this.prisma.sellPositionConfig.findFirst({
+      where: { marketVariant, slugWithSuffix },
+    });
+  }
+
+  async getAllSellPositionConfigs() {
+    return this.prisma.sellPositionConfig.findMany();
   }
 
   async saveMarketTrade({
     marketId,
     slug,
     amount,
-    transactionHash,
+    buyOrderHash,
     timestamp,
     status,
   }: SaveMarketTradeInput) {
@@ -48,7 +64,7 @@ export class PredictRepository {
         marketId,
         slug,
         amount,
-        transactionHash: transactionHash ?? ZeroHash.toString(),
+        buyOrderHash: buyOrderHash ?? ZeroHash.toString(),
         timestamp,
         status,
       },
@@ -58,13 +74,13 @@ export class PredictRepository {
   async updateMarketTradeStatus(
     tradeId: number,
     status: TradeStatus,
-    transactionHash?: string,
+    sellOrderHash?: string,
   ) {
     return this.prisma.trade.update({
       where: { id: tradeId },
       data: {
         status,
-        transactionHash: transactionHash ?? ZeroHash.toString(),
+        sellOrderHash: sellOrderHash ?? ZeroHash.toString(),
         timestamp: new Date(),
       },
     });
@@ -79,36 +95,99 @@ export class PredictRepository {
     });
   }
 
-  async saveTradeConfig(
+  async saveBuyPositionConfig(
     marketVariant: MarketVariant,
-    options: TradeOptions,
+    slugWithSuffix: string,
     amount: number,
+    entry: number,
   ) {
-    const tradeConfig = await this.getTradeConfigByMarketVariant(marketVariant);
-    if (tradeConfig) {
+    const buyConfig = await this.getBuyPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
+    if (buyConfig) {
       throw new ConflictException(
-        `Trade config already exists for marketVariant: ${marketVariant}`,
+        `Buy position config already exists for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
       );
     }
-    return this.prisma.tradeConfig.create({
+    return this.prisma.buyPositionConfig.create({
       data: {
         marketVariant,
-        options,
+        slugWithSuffix,
         amount,
+        entry,
       },
     });
   }
 
-  async updateTradeConfigAmount(marketVariant: MarketVariant, amount: number) {
-    const tradeConfig = await this.getTradeConfigByMarketVariant(marketVariant);
-    if (!tradeConfig) {
+  async updateBuyPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    updates: {
+      amount?: number;
+      entry?: number;
+    },
+  ) {
+    const buyConfig = await this.getBuyPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
+    if (!buyConfig) {
       throw new NotFoundException(
-        `Trade config not found for marketVariant: ${marketVariant}`,
+        `Buy position config not found for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
       );
     }
-    return this.prisma.tradeConfig.update({
-      where: { id: tradeConfig.id },
-      data: { amount },
+    return this.prisma.buyPositionConfig.update({
+      where: { id: buyConfig.id },
+      data: updates,
+    });
+  }
+
+  async saveSellPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    stopLossPercentage: number,
+    amountPercentage: number,
+  ) {
+    const sellConfig = await this.getSellPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
+    if (sellConfig) {
+      throw new ConflictException(
+        `Sell position config already exists for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
+      );
+    }
+    return this.prisma.sellPositionConfig.create({
+      data: {
+        marketVariant,
+        slugWithSuffix,
+        stopLossPercentage,
+        amountPercentage,
+      },
+    });
+  }
+
+  async updateSellPositionConfig(
+    marketVariant: MarketVariant,
+    slugWithSuffix: string,
+    updates: {
+      stopLossPercentage?: number;
+      amountPercentage?: number;
+    },
+  ) {
+    const sellConfig = await this.getSellPositionConfigByMarketVariant(
+      marketVariant,
+      slugWithSuffix,
+    );
+    if (!sellConfig) {
+      throw new NotFoundException(
+        `Sell position config not found for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
+      );
+    }
+    return this.prisma.sellPositionConfig.update({
+      where: { id: sellConfig.id },
+      data: updates,
     });
   }
 }

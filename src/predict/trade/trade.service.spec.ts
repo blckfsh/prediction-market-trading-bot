@@ -50,8 +50,8 @@ describe('TradeService', () => {
     jest.resetAllMocks();
   });
 
-  it('evaluateStopLoss should return when limit loss is not configured', async () => {
-    (configService.get as jest.Mock).mockReturnValue(undefined);
+  it('evaluateStopLoss should return when stop loss is not configured', async () => {
+    const getStopLossPercentageForMarketSlug = jest.fn().mockReturnValue(null);
 
     await service.evaluateStopLoss({
       positions: [
@@ -65,6 +65,8 @@ describe('TradeService', () => {
       getOrderBookByMarketId: jest.fn(),
       getMarketById: jest.fn(),
       subscribeToOrderbook: jest.fn(),
+      getStopLossPercentageForMarketSlug,
+      getAmountPercentageForMarketSlug: jest.fn().mockReturnValue(null),
       createOrder: jest.fn(),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
@@ -112,6 +114,7 @@ describe('TradeService', () => {
       marketTradeLastAttemptAt: new Map(),
       getMarketSlugById: jest.fn(),
       getTradeAmountForMarketSlug: jest.fn(),
+      getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       getOrderBookByMarketId: jest.fn(),
