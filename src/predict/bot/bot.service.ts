@@ -269,6 +269,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
+      await this.evaluateProfitTaking();
       await this.evaluateStopLoss();
 
       console.log(
@@ -553,6 +554,26 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       subscribeToOrderbook: this.subscribeToOrderbook.bind(this),
       getStopLossPercentageForMarketSlug:
         this.getStopLossPercentageForMarketSlug.bind(this),
+      getAmountPercentageForMarketSlug:
+        this.getAmountPercentageForMarketSlug.bind(this),
+      createOrder: (createOrderBody) =>
+        this.tradeService.createOrder({
+          baseUrl: this.baseUrl!,
+          apiKey: this.apiKey!,
+          token: this.token!,
+          createOrderBody,
+        }),
+      orderBuilder: this.orderBuilder!,
+      signer: this.signer!,
+    });
+  }
+
+  private async evaluateProfitTaking(): Promise<void> {
+    await this.tradeService.evaluateProfitTaking({
+      positions: this.positions,
+      getOrderBookByMarketId: this.getOrderBookByMarketId.bind(this),
+      getMarketById: this.getMarketById.bind(this),
+      subscribeToOrderbook: this.subscribeToOrderbook.bind(this),
       getAmountPercentageForMarketSlug:
         this.getAmountPercentageForMarketSlug.bind(this),
       createOrder: (createOrderBody) =>

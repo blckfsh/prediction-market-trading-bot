@@ -731,4 +731,34 @@ describe('BotService', () => {
 
     expect(sellPositionSpy).not.toHaveBeenCalled();
   });
+
+  it('initializePositionTable should evaluate profit-taking and stop-loss', async () => {
+    const getAllPositionsSpy = jest
+      .spyOn(service as any, 'getAllPositions')
+      .mockResolvedValue({
+        success: true,
+        cursor: '',
+        data: [
+          {
+            market: { id: 1, status: 'OPEN' },
+            outcome: { onChainId: '1' },
+            amount: '1000000000000000000',
+            valueUsd: '40',
+          },
+        ],
+      });
+
+    const profitTakingSpy = jest
+      .spyOn(tradeService, 'evaluateProfitTaking')
+      .mockResolvedValue(undefined);
+    const stopLossSpy = jest
+      .spyOn(tradeService, 'evaluateStopLoss')
+      .mockResolvedValue(undefined);
+
+    await (service as any).initializePositionTable();
+
+    expect(getAllPositionsSpy).toHaveBeenCalled();
+    expect(profitTakingSpy).toHaveBeenCalled();
+    expect(stopLossSpy).toHaveBeenCalled();
+  });
 });

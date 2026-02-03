@@ -75,6 +75,75 @@ describe('TradeService', () => {
     expect(predictRepository.getTradeByMarketId).not.toHaveBeenCalled();
   });
 
+  it('evaluateProfitTaking should return when disabled', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_PROFIT_TAKING_ENABLED' ? 'false' : undefined,
+    );
+
+    await service.evaluateProfitTaking({
+      positions: [
+        {
+          market: { id: 1, status: 'OPEN' },
+          outcome: { onChainId: '1' },
+          amount: '1000000000000000000',
+          valueUsd: '140',
+        },
+      ] as any,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      getAmountPercentageForMarketSlug: jest.fn().mockReturnValue(100),
+      createOrder: jest.fn(),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+    });
+
+    expect(predictRepository.getTradeByMarketId).not.toHaveBeenCalled();
+  });
+
+  it('evaluateProfitTaking should sell when profit threshold reached', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'PREDICT_PROFIT_TAKING_ENABLED') {
+        return 'true';
+      }
+      if (key === 'PREDICT_PROFIT_TAKING_PERCENTAGE') {
+        return '20';
+      }
+      return undefined;
+    });
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue({
+      id: 1,
+      status: 'BOUGHT',
+      amount: 100,
+    });
+
+    const sellPositionSpy = jest
+      .spyOn(service as any, 'sellPosition')
+      .mockResolvedValue(undefined);
+
+    await service.evaluateProfitTaking({
+      positions: [
+        {
+          market: { id: 1, status: 'OPEN', categorySlug: 'cat' },
+          outcome: { onChainId: '1' },
+          amount: '1000000000000000000',
+          valueUsd: '130',
+        },
+      ] as any,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      getAmountPercentageForMarketSlug: jest.fn().mockReturnValue(50),
+      createOrder: jest.fn(),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+    });
+
+    expect(sellPositionSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('createOrder should post and return response', async () => {
     const mockResponse = {
       success: true,
