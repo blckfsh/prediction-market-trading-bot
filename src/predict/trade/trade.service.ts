@@ -32,8 +32,10 @@ import { MIN_PROFIT_USD, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
 import {
   getLimitOrderPricing,
   getLimitOrderProfit,
+  isPositionReachedProfitThreshold,
   isPositionReachedThreshold,
 } from 'src/lib/helpers/trade';
+import { parseBooleanFlag } from 'src/lib/utils/boolean';
 
 @Injectable()
 export class TradeService {
@@ -145,6 +147,121 @@ export class TradeService {
       } catch (error) {
         this.logger.warn(
           `Failed to evaluate stop-loss for market ${position.market.id}: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+      }
+    }
+  }
+
+  async evaluateProfitTaking(params: {
+    positions: Position[];
+    getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
+    getMarketById: (marketId: number) => Promise<MarketDataResponse>;
+    subscribeToOrderbook: (marketId: number) => void;
+    getAmountPercentageForMarketSlug: (slug: string) => number | null;
+    createOrder: (body: CreateOrderBody) => Promise<CreateOrderResponse>;
+    orderBuilder: OrderBuilder;
+    signer: Wallet;
+  }): Promise<void> {
+    if (
+      !parseBooleanFlag(
+        this.configService.get<string>('PREDICT_PROFIT_TAKING_ENABLED'),
+      )
+    ) {
+      return;
+    }
+    const rawProfitPercentage = this.configService.get<string>(
+      'PREDICT_PROFIT_TAKING_PERCENTAGE',
+    );
+    const profitTakingPercentage = Number(rawProfitPercentage);
+    if (!Number.isFinite(profitTakingPercentage) || profitTakingPercentage <= 0) {
+      this.logger.warn(
+        `Profit-taking skipped. Invalid PREDICT_PROFIT_TAKING_PERCENTAGE: ${rawProfitPercentage ?? 'N/A'}.`,
+      );
+      return;
+    }
+
+    const {
+      positions,
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook,
+      getAmountPercentageForMarketSlug,
+      createOrder,
+      orderBuilder,
+      signer,
+    } = params;
+
+    for (const position of positions) {
+      if (position.market.status === MarketStatus.RESOLVED) {
+        continue;
+      }
+
+      const amountPercentage = getAmountPercentageForMarketSlug(
+        position.market.categorySlug,
+      );
+      if (amountPercentage === null) {
+        this.logger.warn(
+          `Profit-taking check skipped. No configured amount percentage for market ${position.market.id} slug ${position.market.categorySlug}.`,
+        );
+        continue;
+      }
+
+      const trade = await this.predictRepository.getTradeByMarketId(
+        position.market.id,
+      );
+      if (!trade || trade.status === TradeStatus.SOLD) {
+        continue;
+      }
+
+      try {
+        const entryValueUsd = trade.amount;
+        if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
+          this.logger.warn(
+            `Invalid entry value for market ${position.market.id}. Skipping sell.`,
+          );
+          continue;
+        }
+
+        const currentValueUsd = Number(position.valueUsd);
+        if (!Number.isFinite(currentValueUsd)) {
+          this.logger.warn(
+            `Invalid position value for market ${position.market.id}. Skipping sell.`,
+          );
+          continue;
+        }
+
+        if (
+          !isPositionReachedProfitThreshold({
+            entryValueUsd,
+            currentValueUsd,
+            profitTakingPercentage,
+          })
+        ) {
+          continue;
+        }
+
+        const profitPercentage =
+          ((currentValueUsd - entryValueUsd) / entryValueUsd) * 100;
+        this.logger.log(
+          `Profit-taking reached for market ${position.market.id}: ${profitPercentage.toFixed(2)}% >= ${profitTakingPercentage}%. Selling position.`,
+        );
+
+        await this.sellPosition({
+          existingTrade: trade,
+          position,
+          orderBuilder,
+          signer,
+          amountPercentage,
+          getOrderBookByMarketId,
+          getMarketById,
+          subscribeToOrderbook,
+          createOrder,
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to evaluate profit-taking for market ${position.market.id}: ${
             error instanceof Error ? error.message : 'Unknown error'
           }`,
         );
@@ -557,7 +674,7 @@ export class TradeService {
       return;
     }
 
-    const order = orderBuilder.buildOrder(OrderStrategy.MARKET, {
+    const order = orderBuilder.buildOrder(OrderStrategy.LIMIT, {
       maker: signer.address,
       signer: signer.address,
       side: Side.SELL,

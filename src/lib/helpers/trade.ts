@@ -20,6 +20,26 @@ export const isPositionReachedThreshold = (params: {
   return lossPercentage >= stopLossPercentage;
 };
 
+export const isPositionReachedProfitThreshold = (params: {
+  entryValueUsd: number;
+  currentValueUsd: number;
+  profitTakingPercentage: number;
+}): boolean => {
+  const { entryValueUsd, currentValueUsd, profitTakingPercentage } = params;
+  if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
+    return false;
+  }
+  if (!Number.isFinite(currentValueUsd)) {
+    return false;
+  }
+  if (!Number.isFinite(profitTakingPercentage) || profitTakingPercentage <= 0) {
+    return false;
+  }
+  const profitPercentage =
+    ((currentValueUsd - entryValueUsd) / entryValueUsd) * 100;
+  return profitPercentage >= profitTakingPercentage;
+};
+
 export const getLimitOrderPricing = (params: {
   rawTargetPrice: number;
   decimalPrecision?: number | null;
