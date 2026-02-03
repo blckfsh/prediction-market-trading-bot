@@ -198,5 +198,57 @@ describe('TradeService', () => {
 
     expect(buySpy).not.toHaveBeenCalled();
   });
+
+  it('buyPosition should skip when one of the outcome prices is zero', async () => {
+    const market = {
+      marketId: 1,
+      slug: 'cat',
+      amount: 1,
+      timestamp: new Date(),
+      status: 'BOUGHT',
+    };
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+
+    const getOrderBookByMarketId = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [[0, 1]],
+        bids: [[0.99, 1]],
+      },
+    });
+
+    const getMarketById = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        feeRateBps: 100,
+        isNegRisk: false,
+        isYieldBearing: false,
+        decimalPrecision: 2,
+        outcomes: [{ onChainId: '1' }, { onChainId: '2' }],
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    const subscribeToOrderbook = jest.fn();
+    const createOrderSpy = jest.fn().mockResolvedValue({ success: true } as any);
+
+    await (service as any).buyPosition({
+      market,
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+      entrySeconds: null,
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook,
+      createOrder: createOrderSpy,
+    });
+
+    expect(createOrderSpy).not.toHaveBeenCalled();
+  });
 });
 

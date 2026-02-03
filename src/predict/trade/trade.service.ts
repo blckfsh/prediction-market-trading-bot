@@ -477,6 +477,12 @@ export class TradeService {
       marketData.data.decimalPrecision,
     );
 
+    if (yesBuyPrice === 0 || noBuyPrice === 0) {
+      this.logger.warn(
+        `Skipping auto-trade for market ${marketId}. One of the outcomes has price 0 (YES: ${yesBuyPrice}, NO: ${noBuyPrice}).`,
+      );
+      return;
+    }
     if (yesBuyPrice === noBuyPrice) {
       this.logger.warn('Yes and no buy prices are equal');
       return;
