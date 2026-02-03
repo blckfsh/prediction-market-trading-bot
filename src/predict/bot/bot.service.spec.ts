@@ -761,4 +761,27 @@ describe('BotService', () => {
     expect(profitTakingSpy).toHaveBeenCalled();
     expect(stopLossSpy).toHaveBeenCalled();
   });
+
+  it('initializePositionTable should skip evaluations when no positions', async () => {
+    const getAllPositionsSpy = jest
+      .spyOn(service as any, 'getAllPositions')
+      .mockResolvedValue({
+        success: true,
+        cursor: '',
+        data: [],
+      });
+
+    const profitTakingSpy = jest
+      .spyOn(tradeService, 'evaluateProfitTaking')
+      .mockResolvedValue(undefined);
+    const stopLossSpy = jest
+      .spyOn(tradeService, 'evaluateStopLoss')
+      .mockResolvedValue(undefined);
+
+    await (service as any).initializePositionTable();
+
+    expect(getAllPositionsSpy).toHaveBeenCalled();
+    expect(profitTakingSpy).not.toHaveBeenCalled();
+    expect(stopLossSpy).not.toHaveBeenCalled();
+  });
 });
