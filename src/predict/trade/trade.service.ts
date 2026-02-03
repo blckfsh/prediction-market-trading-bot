@@ -700,8 +700,8 @@ export class TradeService {
     const createOrderBody: CreateOrderBody = {
       data: {
         pricePerShare: pricePerShare.toString(),
-        strategy: TradeStrategy.MARKET,
-        slippageBps: SLIPPAGE_BPS.toString(), // Only used for `MARKET` orders, in this example it's 2%
+        strategy: TradeStrategy.LIMIT,
+        slippageBps: '0',
         isFillOrKill: false,
         order: {
           hash,
