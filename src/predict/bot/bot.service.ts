@@ -243,7 +243,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
         try {
           if (position.market.isNegRisk) {
-            await this.redeemService.redeemNegRiskPosition({
+            const negRiskResult = await this.redeemService.redeemNegRiskPosition({
               orderBuilder: this.orderBuilder!,
               conditionId: position.market.conditionId,
               indexSet,
@@ -251,14 +251,28 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
               isYieldBearing: position.market.isYieldBearing,
               amount: BigInt(position.amount),
             });
+
+            if (negRiskResult.success) {
+              this.logger.log(`Redeemed negative risk position for market ${position.market.id}.`);
+              this.logger.log(`Transaction hash: ${negRiskResult.receipt?.toJSON().transactionHash}`);
+            }
           } else {
-            await this.redeemService.redeemStandardPosition({
+            const standardResult = await this.redeemService.redeemStandardPosition({
               orderBuilder: this.orderBuilder!,
               conditionId: position.market.conditionId,
               indexSet,
               isNegRisk: position.market.isNegRisk,
               isYieldBearing: position.market.isYieldBearing,
             });
+
+            if (standardResult.success) {
+              this.logger.log(
+                `Redeemed standard position for market ${position.market.id}.`,
+              );
+              this.logger.log(
+                `Transaction hash: ${standardResult.receipt?.toJSON().transactionHash}`,
+              );
+            }
           }
         } catch (error) {
           this.logger.warn(

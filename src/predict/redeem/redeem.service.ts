@@ -21,7 +21,6 @@ export class RedeemService {
       if (!result.success) {
         throw new Error(`Failed to redeem position: ${result.cause}`);
       }
-      console.log('Redeem position successful', result.receipt);
       return result;
     } catch (error) {
       if (error instanceof Error) {
@@ -50,7 +49,6 @@ export class RedeemService {
       if (!result.success) {
         throw new Error(`Failed to redeem position: ${result.cause}`);
       }
-      console.log('Redeem position successful', result.receipt);
       return result;
     } catch (error) {
       if (error instanceof Error) {
