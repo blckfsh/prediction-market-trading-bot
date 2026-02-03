@@ -239,6 +239,9 @@ export class TradeService {
             profitTakingPercentage,
           })
         ) {
+          this.logger.warn(
+            `Profit-taking not reached for market ${position.market.id}. Skipping sell.`,
+          );
           continue;
         }
 
