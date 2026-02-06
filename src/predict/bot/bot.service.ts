@@ -710,6 +710,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           marketId: orderbook.marketId,
           marketTradeInFlight: this.marketTradeInFlight,
           marketTradeLastAttemptAt: this.marketTradeLastAttemptAt,
+          positions: this.positions,
           getMarketSlugById: this.getMarketSlugById.bind(this),
           getTradeAmountForMarketSlug: this.getTradeAmountForMarketSlug.bind(this),
           getEntrySecondsForMarketSlug:
