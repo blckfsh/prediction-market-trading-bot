@@ -21,24 +21,6 @@ function getCategoryRefreshIntervalMs(configService: ConfigService): number {
   return Number.isFinite(parsed) ? parsed : CATEGORY_REFRESH_INTERVAL_MS;
 }
 
-function getAutoTradeIntervalMs(configService: ConfigService): number {
-  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE_INTERVAL_MS');
-  if (!raw || raw.trim() === '') {
-    return AUTO_TRADE_INTERVAL_MS;
-  }
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
-}
-
-function isWebsocketAutoTradeEnabled(configService: ConfigService): boolean {
-  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE');
-  if (!raw || raw.trim() === '') {
-    return false;
-  }
-  const normalized = raw.trim().toLowerCase();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes';
-}
-
 function isBotEnabled(configService: ConfigService): boolean {
   return parseBooleanFlag(configService.get<string>('PREDICT_BOT_ENABLED'));
 }
@@ -258,29 +240,8 @@ function getMarketTimeLeftMessage(
   return `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`;
 }
 
-function getMarketTimeLeftSeconds(
-  market: Pick<
-    Category['markets'][number],
-    'createdAt' | 'boostStartsAt' | 'boostEndsAt'
-  >,
-): number | null {
-  const createdAtDate = new Date(market.createdAt);
-  if (Number.isNaN(createdAtDate.getTime())) {
-    return null;
-  }
-  const durationMs = getMarketDurationMs(market);
-  if (!durationMs) {
-    return null;
-  }
-  const expiresAtMs = createdAtDate.getTime() + durationMs;
-  const diffMs = Math.max(0, expiresAtMs - Date.now());
-  return Math.floor(diffMs / 1000);
-}
-
 export {
   getCategoryRefreshIntervalMs,
-  getAutoTradeIntervalMs,
-  isWebsocketAutoTradeEnabled,
   isBotEnabled,
   isWebsocketEnabled,
   filterAndSortCryptoUpDownCategories,
@@ -293,6 +254,5 @@ export {
   buildBuyConfigKey,
   getMarketDurationMs,
   getMarketTimeLeftMessage,
-  getMarketTimeLeftSeconds,
 };
 
