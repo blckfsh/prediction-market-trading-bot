@@ -1,5 +1,4 @@
 import { ConfigService } from '@nestjs/config';
-import { Logger } from '@nestjs/common';
 
 export type RefreshLoopState = {
   intervalId: NodeJS.Timeout | null;
@@ -8,6 +7,5 @@ export type RefreshLoopState = {
 
 export type RefreshLoopDeps = {
   configService: ConfigService;
-  logger: Logger;
 };
 

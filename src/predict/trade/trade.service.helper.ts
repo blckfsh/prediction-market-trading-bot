@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { AUTO_TRADE_INTERVAL_MS } from 'src/lib/helpers/constants';
 import { Position } from 'src/predict/types/market.types';
 
 export function getDateKey(date: Date): string {
@@ -6,6 +7,46 @@ export function getDateKey(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
   const day = `${date.getDate()}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+export function getAutoTradeIntervalMs(
+  configService: ConfigService,
+): number {
+  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE_INTERVAL_MS');
+  if (!raw || raw.trim() === '') {
+    return AUTO_TRADE_INTERVAL_MS;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
+}
+
+export function isWebsocketAutoTradeEnabled(
+  configService: ConfigService,
+): boolean {
+  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE');
+  if (!raw || raw.trim() === '') {
+    return false;
+  }
+  const normalized = raw.trim().toLowerCase();
+  return normalized === 'true' || normalized === '1' || normalized === 'yes';
+}
+
+export function getMarketTimeLeftSeconds(market: {
+  createdAt: string;
+  boostStartsAt?: string | null;
+  boostEndsAt?: string | null;
+}): number | null {
+  const createdAtDate = new Date(market.createdAt);
+  if (Number.isNaN(createdAtDate.getTime())) {
+    return null;
+  }
+  const durationMs = getMarketDurationMs(market);
+  if (!durationMs) {
+    return null;
+  }
+  const expiresAtMs = createdAtDate.getTime() + durationMs;
+  const diffMs = Math.max(0, expiresAtMs - Date.now());
+  return Math.floor(diffMs / 1000);
 }
 
 export function pruneDailyPnlCache(

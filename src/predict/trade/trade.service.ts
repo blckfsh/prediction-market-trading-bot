@@ -4,7 +4,6 @@ import {
   formatEther,
   parseEther,
   Wallet,
-  WeiPerEther,
   ZeroAddress,
   ZeroHash,
 } from 'ethers';
@@ -23,12 +22,7 @@ import {
 import { Trade, TradeStatus } from 'generated/prisma/client';
 import { PredictRepository } from '../predict.repository';
 import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
-import {
-  getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
-  getMarketTimeLeftSeconds,
-  isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
-} from 'src/lib/helpers/bot';
-import { MIN_PROFIT_USD, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
+import { MIN_PROFIT_USD } from 'src/lib/helpers/constants';
 import {
   getLimitOrderPricing,
   getLimitOrderProfit,
@@ -36,9 +30,11 @@ import {
   isPositionReachedThreshold,
 } from 'src/lib/helpers/trade';
 import {
-  getDateKey,
-  getUnrealizedPnlUsdForToday,
-  recordDailyRealizedPnl,
+  getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
+  getMarketTimeLeftSeconds as getMarketTimeLeftSecondsHelper,
+  isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
+  getUnrealizedPnlUsdForToday as getUnrealizedPnlUsdForTodayHelper,
+  recordDailyRealizedPnl as recordDailyRealizedPnlHelper,
   shouldHaltTradingForDay as shouldHaltTradingForDayHelper,
 } from './trade.service.helper';
 import { parseBooleanFlag } from 'src/lib/utils/boolean';
@@ -60,7 +56,7 @@ export class TradeService {
       configService: this.configService,
       dailyRealizedPnlUsdByDate: this.dailyRealizedPnlUsdByDate,
       positions,
-      getUnrealizedPnlUsdForToday,
+      getUnrealizedPnlUsdForToday: getUnrealizedPnlUsdForTodayHelper,
       getTradeByMarketId: this.predictRepository.getTradeByMarketId.bind(
         this.predictRepository,
       ),
@@ -504,7 +500,7 @@ export class TradeService {
     }
 
     const marketData = await getMarketById(marketId);
-    const timeLeftSeconds = getMarketTimeLeftSeconds(marketData.data);
+    const timeLeftSeconds = getMarketTimeLeftSecondsHelper(marketData.data);
     if (timeLeftSeconds === 0) {
       this.logger.warn(
         `Skipping auto-trade for market ${marketId}. Market time left is 0s.`,
@@ -801,7 +797,7 @@ export class TradeService {
       entryValueUsd !== undefined &&
       currentValueUsd !== undefined
     ) {
-      const pnlEntry = recordDailyRealizedPnl({
+      const pnlEntry = recordDailyRealizedPnlHelper({
         dailyRealizedPnlUsdByDate: this.dailyRealizedPnlUsdByDate,
         amountUsd: currentValueUsd - entryValueUsd,
         marketId: existingTrade.marketId,

@@ -21,24 +21,6 @@ function getCategoryRefreshIntervalMs(configService: ConfigService): number {
   return Number.isFinite(parsed) ? parsed : CATEGORY_REFRESH_INTERVAL_MS;
 }
 
-function getAutoTradeIntervalMs(configService: ConfigService): number {
-  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE_INTERVAL_MS');
-  if (!raw || raw.trim() === '') {
-    return AUTO_TRADE_INTERVAL_MS;
-  }
-  const parsed = Number(raw);
-  return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
-}
-
-function isWebsocketAutoTradeEnabled(configService: ConfigService): boolean {
-  const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE');
-  if (!raw || raw.trim() === '') {
-    return false;
-  }
-  const normalized = raw.trim().toLowerCase();
-  return normalized === 'true' || normalized === '1' || normalized === 'yes';
-}
-
 function isBotEnabled(configService: ConfigService): boolean {
   return parseBooleanFlag(configService.get<string>('PREDICT_BOT_ENABLED'));
 }
@@ -62,7 +44,6 @@ function filterAndSortCryptoUpDownCategories(
 }
 
 async function refreshCategoriesAndSubscribe(
-  deps: RefreshLoopDeps,
   state: RefreshLoopState,
   categories: {
     list: Category[];
@@ -72,9 +53,9 @@ async function refreshCategoriesAndSubscribe(
   filterAndSort: (data: Category[]) => Category[],
   subscribeToOrderbook: (marketId: number) => void,
   onUpdated?: (updated: Category[]) => void | Promise<void>,
-): Promise<void> {
+): Promise<{ newMarketsCount: number; error?: string }> {
   if (state.inFlight) {
-    return;
+    return { newMarketsCount: 0 };
   }
   state.inFlight = true;
   try {
@@ -95,21 +76,15 @@ async function refreshCategoriesAndSubscribe(
       subscribeToOrderbook(market.id);
     }
 
-    if (newMarkets.length > 0) {
-      deps.logger.log(
-        `Discovered ${newMarkets.length} new markets; subscribed to orderbooks.`,
-      );
-    }
-
     if (onUpdated) {
       await onUpdated(updatedCategories);
     }
+    return { newMarketsCount: newMarkets.length };
   } catch (error) {
-    deps.logger.warn(
-      `Failed to refresh categories: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`,
-    );
+    return {
+      newMarketsCount: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   } finally {
     state.inFlight = false;
   }
@@ -146,22 +121,18 @@ function startPositionsRefreshLoop(
 }
 
 async function refreshPositionsTable(
-  deps: RefreshLoopDeps,
   state: RefreshLoopState,
   initializePositionTable: () => Promise<void>,
-): Promise<void> {
+): Promise<{ error?: string }> {
   if (state.inFlight) {
-    return;
+    return {};
   }
   state.inFlight = true;
   try {
     await initializePositionTable();
+    return {};
   } catch (error) {
-    deps.logger.warn(
-      `Failed to refresh positions: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`,
-    );
+    return { error: error instanceof Error ? error.message : 'Unknown error' };
   } finally {
     state.inFlight = false;
   }
@@ -247,58 +218,30 @@ function getMarketDurationMs(
   return null;
 }
 
-function logMarketTimeLeft(
-  logger: { log: (message: string) => void },
+function getMarketTimeLeftMessage(
   market: Pick<
     Category['markets'][number],
     'id' | 'createdAt' | 'boostStartsAt' | 'boostEndsAt'
   >,
-): void {
+): string | null {
   const createdAtDate = new Date(market.createdAt);
   if (Number.isNaN(createdAtDate.getTime())) {
-    logger.log(`Market ${market.id} createdAt is invalid: ${market.createdAt}`);
-    return;
+    return `Market ${market.id} createdAt is invalid: ${market.createdAt}`;
   }
   const durationMs = getMarketDurationMs(market);
   if (!durationMs) {
-    logger.log(
-      `Market ${market.id} duration not found; cannot compute time left`,
-    );
-    return;
+    return `Market ${market.id} duration not found; cannot compute time left`;
   }
   const expiresAtMs = createdAtDate.getTime() + durationMs;
   const diffMs = Math.max(0, expiresAtMs - Date.now());
   const totalSeconds = Math.floor(diffMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  logger.log(
-    `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`,
-  );
-}
-
-function getMarketTimeLeftSeconds(
-  market: Pick<
-    Category['markets'][number],
-    'createdAt' | 'boostStartsAt' | 'boostEndsAt'
-  >,
-): number | null {
-  const createdAtDate = new Date(market.createdAt);
-  if (Number.isNaN(createdAtDate.getTime())) {
-    return null;
-  }
-  const durationMs = getMarketDurationMs(market);
-  if (!durationMs) {
-    return null;
-  }
-  const expiresAtMs = createdAtDate.getTime() + durationMs;
-  const diffMs = Math.max(0, expiresAtMs - Date.now());
-  return Math.floor(diffMs / 1000);
+  return `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`;
 }
 
 export {
   getCategoryRefreshIntervalMs,
-  getAutoTradeIntervalMs,
-  isWebsocketAutoTradeEnabled,
   isBotEnabled,
   isWebsocketEnabled,
   filterAndSortCryptoUpDownCategories,
@@ -310,6 +253,6 @@ export {
   shouldLogRealtimeEvent,
   buildBuyConfigKey,
   getMarketDurationMs,
-  logMarketTimeLeft,
-  getMarketTimeLeftSeconds,
+  getMarketTimeLeftMessage,
 };
+
