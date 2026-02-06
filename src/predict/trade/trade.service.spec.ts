@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { PredictRepository } from '../predict.repository';
 import { TradeService } from './trade.service';
+import { getDateKey } from './trade.service.helper';
 
 jest.mock(
   '@prisma/client',
@@ -183,6 +184,47 @@ describe('TradeService', () => {
       marketTradeLastAttemptAt: new Map(),
       getMarketSlugById: jest.fn(),
       getTradeAmountForMarketSlug: jest.fn(),
+      getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      requestContext: {
+        baseUrl: 'https://api.example.com',
+        apiKey: 'test-api-key',
+        token: 'jwt-token',
+      },
+    });
+
+    expect(buySpy).not.toHaveBeenCalled();
+  });
+
+  it('createTradeFromOrderbook should skip when daily profit limit reached', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'PREDICT_WS_AUTO_TRADE') {
+        return 'true';
+      }
+      if (key === 'PREDICT_MAX_TRADING_PROFIT_IN_USD_FOR_THE_DAY') {
+        return '100';
+      }
+      return undefined;
+    });
+
+    const todayKey = getDateKey(new Date());
+    (service as any).dailyRealizedPnlUsdByDate.set(todayKey, 120);
+
+    const buySpy = jest
+      .spyOn(service as any, 'buyPosition')
+      .mockResolvedValue(undefined);
+
+    await service.createTradeFromOrderbook({
+      marketId: 1,
+      marketTradeInFlight: new Set(),
+      marketTradeLastAttemptAt: new Map(),
+      positions: [],
+      getMarketSlugById: jest.fn().mockReturnValue('slug'),
+      getTradeAmountForMarketSlug: jest.fn().mockReturnValue(1),
       getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,

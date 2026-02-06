@@ -35,16 +35,54 @@ import {
   isPositionReachedProfitThreshold,
   isPositionReachedThreshold,
 } from 'src/lib/helpers/trade';
+import {
+  getDateKey,
+  getUnrealizedPnlUsdForToday,
+  recordDailyRealizedPnl,
+  shouldHaltTradingForDay as shouldHaltTradingForDayHelper,
+} from './trade.service.helper';
 import { parseBooleanFlag } from 'src/lib/utils/boolean';
 
 @Injectable()
 export class TradeService {
   private readonly logger = new Logger(TradeService.name);
+  private readonly dailyRealizedPnlUsdByDate = new Map<string, number>();
 
   constructor(
     private readonly predictRepository: PredictRepository,
     private readonly configService: ConfigService,
   ) {}
+
+  private async shouldHaltTradingForDay(
+    positions?: Position[],
+  ): Promise<boolean> {
+    const result = await shouldHaltTradingForDayHelper({
+      configService: this.configService,
+      dailyRealizedPnlUsdByDate: this.dailyRealizedPnlUsdByDate,
+      positions,
+      getUnrealizedPnlUsdForToday,
+      getTradeByMarketId: this.predictRepository.getTradeByMarketId.bind(
+        this.predictRepository,
+      ),
+    });
+    if (
+      result.shouldHalt &&
+      result.reason &&
+      result.totalPnlUsd !== undefined &&
+      result.limitUsd !== undefined
+    ) {
+      this.logger.warn(
+        `Daily ${result.reason} limit reached. PnL: ${result.totalPnlUsd.toFixed(2)} ${
+          result.reason === 'profit' ? '>=' : '<='
+        } ${
+          result.reason === 'profit'
+            ? result.limitUsd
+            : -result.limitUsd
+        }. Halting trades for today.`,
+      );
+    }
+    return result.shouldHalt;
+  }
 
   async evaluateStopLoss(params: {
     positions: Position[];
@@ -68,6 +106,11 @@ export class TradeService {
       orderBuilder,
       signer,
     } = params;
+    if (await this.shouldHaltTradingForDay(positions)) {
+      return;
+    }
+
+    
 
     for (const position of positions) {
       if (position.market.status === MarketStatus.RESOLVED) {
@@ -138,6 +181,8 @@ export class TradeService {
           position,
           orderBuilder,
           signer,
+          entryValueUsd,
+          currentValueUsd,
           amountPercentage,
           getOrderBookByMarketId,
           getMarketById,
@@ -192,6 +237,11 @@ export class TradeService {
       orderBuilder,
       signer,
     } = params;
+    if (await this.shouldHaltTradingForDay(positions)) {
+      return;
+    }
+
+    
 
     for (const position of positions) {
       if (position.market.status === MarketStatus.RESOLVED) {
@@ -256,6 +306,8 @@ export class TradeService {
           position,
           orderBuilder,
           signer,
+          entryValueUsd,
+          currentValueUsd,
           amountPercentage,
           getOrderBookByMarketId,
           getMarketById,
@@ -318,6 +370,7 @@ export class TradeService {
     marketId: number;
     marketTradeInFlight: Set<number>;
     marketTradeLastAttemptAt: Map<number, number>;
+    positions?: Position[];
     getMarketSlugById: (marketId: number) => string | null;
     getTradeAmountForMarketSlug: (slug: string) => number;
     getEntrySecondsForMarketSlug: (slug: string) => number | null;
@@ -336,6 +389,7 @@ export class TradeService {
       marketId,
       marketTradeInFlight,
       marketTradeLastAttemptAt,
+      positions = [],
       getMarketSlugById,
       getTradeAmountForMarketSlug,
       getEntrySecondsForMarketSlug,
@@ -359,6 +413,11 @@ export class TradeService {
     if (cooldownMs > 0 && Date.now() - lastAttemptAt < cooldownMs) {
       return;
     }
+    if (await this.shouldHaltTradingForDay(positions)) {
+      return;
+    }
+
+    
     marketTradeInFlight.add(marketId);
     marketTradeLastAttemptAt.set(marketId, Date.now());
 
@@ -620,6 +679,8 @@ export class TradeService {
     position: Position;
     orderBuilder: OrderBuilder;
     signer: Wallet;
+    entryValueUsd?: number;
+    currentValueUsd?: number;
     amountPercentage: number;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
@@ -631,6 +692,8 @@ export class TradeService {
       position,
       orderBuilder,
       signer,
+      entryValueUsd,
+      currentValueUsd,
       amountPercentage,
       getOrderBookByMarketId,
       getMarketById,
@@ -731,6 +794,24 @@ export class TradeService {
         `Failed to create order: ${createOrderResponse.error!._tag}`,
       );
       return;
+    }
+    if (
+      Number.isFinite(entryValueUsd) &&
+      Number.isFinite(currentValueUsd) &&
+      entryValueUsd !== undefined &&
+      currentValueUsd !== undefined
+    ) {
+      const pnlEntry = recordDailyRealizedPnl({
+        dailyRealizedPnlUsdByDate: this.dailyRealizedPnlUsdByDate,
+        amountUsd: currentValueUsd - entryValueUsd,
+        marketId: existingTrade.marketId,
+        timestamp: new Date(),
+      });
+      if (pnlEntry) {
+        this.logger.log(
+          `Daily realized PnL updated. Market: ${pnlEntry.marketId ?? 'N/A'}; Amount: ${pnlEntry.amountUsd.toFixed(2)}; Total: ${pnlEntry.totalUsd.toFixed(2)}; Timestamp: ${pnlEntry.timestamp.toISOString()}`,
+        );
+      }
     }
 
     const orderHash =
