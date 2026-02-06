@@ -31,6 +31,28 @@ export function isWebsocketAutoTradeEnabled(
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
+function getMarketDurationMs(market: {
+  boostStartsAt?: string | null;
+  boostEndsAt?: string | null;
+}): number | null {
+  const boostStart = market.boostStartsAt
+    ? new Date(market.boostStartsAt)
+    : null;
+  const boostEnd = market.boostEndsAt ? new Date(market.boostEndsAt) : null;
+  if (
+    boostStart &&
+    boostEnd &&
+    !Number.isNaN(boostStart.getTime()) &&
+    !Number.isNaN(boostEnd.getTime())
+  ) {
+    const boostDurationMs = boostEnd.getTime() - boostStart.getTime();
+    if (boostDurationMs > 0) {
+      return boostDurationMs;
+    }
+  }
+  return null;
+}
+
 export function getMarketTimeLeftSeconds(market: {
   createdAt: string;
   boostStartsAt?: string | null;
