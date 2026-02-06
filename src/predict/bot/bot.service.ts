@@ -51,8 +51,8 @@ import {
   startPositionsRefreshLoop as startPositionsRefreshLoopHelper,
   shouldLogRealtimeEvent as shouldLogRealtimeEventHelper,
   buildBuyConfigKey,
-  logMarketTimeLeft,
-} from 'src/lib/helpers/bot';
+  getMarketTimeLeftMessage,
+} from './bot.service.helper';
 import { WebsocketService } from 'src/predict/websocket/websocket.service';
 import {
   AssetPriceUpdate,
@@ -416,8 +416,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
    **************************************************** */
 
   private async refreshCategoriesAndSubscribe(): Promise<void> {
-    await refreshCategoriesAndSubscribeHelper(
-      { configService: this.configService, logger: this.logger },
+    const { newMarketsCount, error } = await refreshCategoriesAndSubscribeHelper(
       this.categoryRefreshState,
       {
         list: this.categories,
@@ -435,14 +434,25 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         await this.logCategoryTables({ subscribeToMarkets: false });
       },
     );
+    if (error) {
+      this.logger.warn(`Failed to refresh categories: ${error}`);
+      return;
+    }
+    if (newMarketsCount > 0) {
+      this.logger.log(
+        `Discovered ${newMarketsCount} new markets; subscribed to orderbooks.`,
+      );
+    }
   }
 
   private async refreshPositionsTable(): Promise<void> {
-    await refreshPositionsTableHelper(
-      { configService: this.configService, logger: this.logger },
+    const { error } = await refreshPositionsTableHelper(
       this.positionsRefreshState,
       () => this.initializePositionTable(),
     );
+    if (error) {
+      this.logger.warn(`Failed to refresh positions: ${error}`);
+    }
   }
 
   /* ****************************************************
@@ -502,7 +512,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           const batchResults = await Promise.all(
             batch.map(async (market) => {
               const createdAt = formatCreatedAt(market.createdAt);
-              logMarketTimeLeft(this.logger, market);
+              const timeLeftMessage = getMarketTimeLeftMessage(market);
+              if (timeLeftMessage) {
+                this.logger.log(timeLeftMessage);
+              }
               try {
                 const stats = await this.getMarketStatistics(market.id);
                 return {
@@ -658,7 +671,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   // Starts the recurring category refresh + subscription loop.
   private startCategoryRefreshLoop(): void {
     this.categoryRefreshState.intervalId = startCategoryRefreshLoopHelper(
-      { configService: this.configService, logger: this.logger },
+      { configService: this.configService },
       this.categoryRefreshState,
       () => this.refreshCategoriesAndSubscribe(),
     );
@@ -667,7 +680,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   // Starts the recurring positions refresh loop.
   private startPositionsRefreshLoop(): void {
     this.positionsRefreshState.intervalId = startPositionsRefreshLoopHelper(
-      { configService: this.configService, logger: this.logger },
+      { configService: this.configService },
       this.positionsRefreshState,
       () => this.refreshPositionsTable(),
     );

@@ -4,7 +4,6 @@ import {
   formatEther,
   parseEther,
   Wallet,
-  WeiPerEther,
   ZeroAddress,
   ZeroHash,
 } from 'ethers';
@@ -27,7 +26,7 @@ import {
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
   getMarketTimeLeftSeconds,
   isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
-} from 'src/lib/helpers/bot';
+} from 'src/predict/bot/bot.service.helper';
 import { MIN_PROFIT_USD, SLIPPAGE_BPS } from 'src/lib/helpers/constants';
 import {
   getLimitOrderPricing,
