@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
-import { WebsocketService } from './websocket.service';
-import { RealtimeClient } from 'src/lib/clients/predict';
+import { PredictRealtimeService } from './predict-realtime.service';
+import { RealtimeClient } from './predict-realtime.client';
 
 let mockClient: {
   subscribe: jest.Mock;
@@ -8,7 +8,7 @@ let mockClient: {
   refreshSubscriptions: jest.Mock;
 };
 
-jest.mock('src/lib/clients/predict', () => ({
+jest.mock('./predict-realtime.client', () => ({
   RealtimeClient: jest.fn(() => mockClient),
 }));
 
@@ -17,7 +17,7 @@ const createConfigService = (overrides: Record<string, string | undefined>) =>
     get: jest.fn((key: string) => overrides[key]),
   }) as unknown as ConfigService;
 
-describe('WebsocketService', () => {
+describe('PredictRealtimeService', () => {
   beforeEach(() => {
     mockClient = {
       subscribe: jest.fn(),
@@ -38,7 +38,7 @@ describe('WebsocketService', () => {
       PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
       PREDICT_WS_REFRESH_INTERVAL_MS: '0',
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
 
     const first = service.connect();
     const second = service.connect();
@@ -55,7 +55,7 @@ describe('WebsocketService', () => {
       PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
       PREDICT_WS_REFRESH_INTERVAL_MS: '0',
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
 
     service.connect();
 
@@ -67,7 +67,7 @@ describe('WebsocketService', () => {
     const configService = createConfigService({
       PREDICT_WS_URL: undefined,
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
 
     expect(() => service.connect()).toThrow('PREDICT_WS_URL is not configured');
   });
@@ -79,7 +79,7 @@ describe('WebsocketService', () => {
       PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
       PREDICT_WS_REFRESH_INTERVAL_MS: '0',
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
     const topic = { name: 'predictOrderbook', marketId: 123 };
     const callback = jest.fn();
     mockClient.subscribe.mockReturnValue({ unsubscribe: jest.fn() });
@@ -96,7 +96,7 @@ describe('WebsocketService', () => {
       PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
       PREDICT_WS_REFRESH_INTERVAL_MS: '0',
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
     service.connect();
 
     service.close();
@@ -112,7 +112,7 @@ describe('WebsocketService', () => {
       PREDICT_WS_MAX_RETRY_INTERVAL_MS: '30000',
       PREDICT_WS_REFRESH_INTERVAL_MS: '10',
     });
-    const service = new WebsocketService(configService);
+    const service = new PredictRealtimeService(configService);
     service.connect();
 
     jest.advanceTimersByTime(10);

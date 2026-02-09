@@ -6,7 +6,7 @@ import {
 } from 'generated/prisma/client';
 import { MarketVariant } from 'lib/zenstack/models';
 import { PredictRepository } from './predict.repository';
-import { REFERRAL_CODE } from 'src/lib/helpers/constants';
+import { REFERRAL_CODE } from 'src/common/helpers/constants';
 import { OrderBuilder } from '@predictdotfun/sdk';
 import { SetApprovalsResult } from '@predictdotfun/sdk';
 

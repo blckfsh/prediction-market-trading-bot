@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { ZeroHash } from 'ethers';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { SaveMarketTradeInput } from 'src/predict/types/market.types';
+import { SaveMarketTradeInput } from 'src/types/market.types';
 import { MarketVariant } from 'lib/zenstack/models';
 import { TradeStatus } from 'generated/prisma/client';
 

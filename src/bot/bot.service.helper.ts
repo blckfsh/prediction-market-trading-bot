@@ -1,16 +1,16 @@
 import { ConfigService } from '@nestjs/config';
-import { Category, MarketVariant } from 'src/predict/types/market.types';
-import { parseBooleanFlag } from 'src/lib/utils/boolean';
+import { Category, MarketVariant } from 'src/types/market.types';
+import { parseBooleanFlag } from 'src/common/utils/boolean';
 import {
   Channel,
   PredictOrderbook,
   RealtimeTopic,
-} from 'src/predict/types/websocket.types';
-import { RefreshLoopDeps, RefreshLoopState } from 'src/predict/types/bot.types';
+} from 'src/types/websocket.types';
+import { RefreshLoopDeps, RefreshLoopState } from 'src/types/bot.types';
 import {
   AUTO_TRADE_INTERVAL_MS,
   CATEGORY_REFRESH_INTERVAL_MS,
-} from 'src/lib/helpers/constants';
+} from 'src/common/helpers/constants';
 
 function getCategoryRefreshIntervalMs(configService: ConfigService): number {
   const raw = configService.get<string>('PREDICT_CATEGORY_REFRESH_INTERVAL_MS');

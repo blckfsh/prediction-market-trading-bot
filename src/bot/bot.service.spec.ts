@@ -1,10 +1,10 @@
 import { BotService } from './bot.service';
 import { ConfigService } from '@nestjs/config';
-import { PredictRepository } from '../predict.repository';
-import { WebsocketService } from '../websocket/websocket.service';
-import { TradeService } from '../trade/trade.service';
-import { RedeemService } from '../redeem/redeem.service';
-import { PredictService } from '../predict.service';
+import { PredictRepository } from 'src/predict/predict.repository';
+import { PredictRealtimeService } from 'src/websocket/predict-realtime.service';
+import { TradeService } from 'src/trade/trade.service';
+import { RedeemService } from 'src/redeem/redeem.service';
+import { PredictService } from 'src/predict/predict.service';
 import {
   GetAllMarketsResponse,
   GetCategoriesByResponse,
@@ -15,10 +15,10 @@ import {
   CreateOrderBody,
   CreateOrderResponse,
   SaveMarketTradeInput,
-} from '../types/market.types';
-import { RealtimeTopic } from '../types/websocket.types';
+} from 'src/types/market.types';
+import { RealtimeTopic } from 'src/types/websocket.types';
 import { TradeStatus } from 'generated/prisma/client';
-import { REFERRAL_CODE } from 'src/lib/helpers/constants';
+import { REFERRAL_CODE } from 'src/common/helpers/constants';
 
 jest.mock(
   'generated/prisma/client',
@@ -37,7 +37,7 @@ jest.mock(
   { virtual: true },
 );
 
-jest.mock('../predict.repository', () => {
+jest.mock('src/predict/predict.repository', () => {
   const MockRepo = jest.fn().mockImplementation(() => ({
     saveMarketTrade: jest.fn(),
     getTradeByMarketId: jest.fn(),
@@ -53,7 +53,7 @@ describe('BotService', () => {
   let predictService: PredictService;
   let configService: ConfigService;
   let predictRepository: PredictRepository;
-  let websocketService: WebsocketService;
+  let websocketService: PredictRealtimeService;
 
   beforeEach(() => {
     // Minimal mocks for dependencies
@@ -72,7 +72,7 @@ describe('BotService', () => {
     websocketService = {
       connect: jest.fn(),
       subscribe: jest.fn(),
-    } as unknown as WebsocketService;
+    } as unknown as PredictRealtimeService;
 
     tradeService = new TradeService(predictRepository, configService);
     redeemService = new RedeemService();

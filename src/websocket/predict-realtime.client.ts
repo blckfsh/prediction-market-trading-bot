@@ -8,7 +8,7 @@ import {
   Response,
   TopicName,
   RealtimeTopic,
-} from 'src/predict/types/websocket.types';
+} from 'src/types/websocket.types';
 
 function neOf<T>(item: T): NonEmptyArray<T> {
   return [item] as NonEmptyArray<T>;
@@ -278,3 +278,4 @@ export class RealtimeClient {
 }
 
 export type { MessageResponses };
+

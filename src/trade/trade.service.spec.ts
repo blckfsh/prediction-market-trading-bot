@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { PredictRepository } from '../predict.repository';
+import { PredictRepository } from 'src/predict/predict.repository';
 import { TradeService } from './trade.service';
 import { getDateKey } from './trade.service.helper';
 
@@ -11,7 +11,7 @@ jest.mock(
   { virtual: true },
 );
 
-jest.mock('../predict.repository', () => ({
+jest.mock('src/predict/predict.repository', () => ({
   PredictRepository: class PredictRepository {},
 }));
 
