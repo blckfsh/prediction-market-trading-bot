@@ -16,7 +16,7 @@ import {
   CreateSellPositionConfigBody,
   UpdateBuyPositionConfigBody,
   UpdateSellPositionConfigBody,
-} from 'src/predict/dto/trade-config.dto';
+} from 'src/dto/trade-config.dto';
 import { AuthGuard } from 'src/common/guard/auth.guard';
 
 @Controller('predict')

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OrderBuilder } from '@predictdotfun/sdk';
-import { RedeemPositionParams } from 'src/predict/types/market.types';
+import { RedeemPositionParams } from 'src/types/market.types';
 
 @Injectable()
 export class RedeemService {

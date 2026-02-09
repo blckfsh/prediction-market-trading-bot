@@ -1,13 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Channel, EventCallback } from 'src/predict/types/websocket.types';
-import { RealtimeClient } from 'src/lib/clients/predict';
+import { Channel, EventCallback } from 'src/types/websocket.types';
+import { RealtimeClient } from './predict-realtime.client';
 
 type SubscriptionHandle = { unsubscribe: () => void };
 
 @Injectable()
-export class WebsocketService implements OnModuleDestroy {
-  private readonly logger = new Logger(WebsocketService.name);
+export class PredictRealtimeService implements OnModuleDestroy {
+  private readonly logger = new Logger(PredictRealtimeService.name);
   private client: RealtimeClient | null = null;
   private refreshIntervalId: NodeJS.Timeout | null = null;
 

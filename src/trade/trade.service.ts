@@ -18,17 +18,11 @@ import {
   Position,
   SaveMarketTradeInput,
   TradeStrategy,
-} from '../types/market.types';
+} from 'src/types/market.types';
 import { Trade, TradeStatus } from 'generated/prisma/client';
-import { PredictRepository } from '../predict.repository';
-import { getComplement, normalizeDepth } from 'src/lib/utils/orderbook';
-import { MIN_PROFIT_USD } from 'src/lib/helpers/constants';
-import {
-  getLimitOrderPricing,
-  getLimitOrderProfit,
-  isPositionReachedProfitThreshold,
-  isPositionReachedThreshold,
-} from 'src/lib/helpers/trade';
+import { PredictRepository } from 'src/predict/predict.repository';
+import { getComplement, normalizeDepth } from 'src/common/utils/orderbook';
+import { MIN_PROFIT_USD } from 'src/common/helpers/constants';
 import {
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
   getMarketTimeLeftSeconds as getMarketTimeLeftSecondsHelper,
@@ -36,8 +30,12 @@ import {
   getUnrealizedPnlUsdForToday as getUnrealizedPnlUsdForTodayHelper,
   recordDailyRealizedPnl as recordDailyRealizedPnlHelper,
   shouldHaltTradingForDay as shouldHaltTradingForDayHelper,
+  getLimitOrderPricing,
+  getLimitOrderProfit,
+  isPositionReachedProfitThreshold,
+  isPositionReachedThreshold,
 } from './trade.service.helper';
-import { parseBooleanFlag } from 'src/lib/utils/boolean';
+import { parseBooleanFlag } from 'src/common/utils/boolean';
 
 @Injectable()
 export class TradeService {

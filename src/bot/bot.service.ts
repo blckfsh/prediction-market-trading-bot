@@ -19,7 +19,7 @@ import {
   BuyPositionConfig,
   SellPositionConfig,
 } from 'generated/prisma/client';
-import { BalanceResponse } from 'src/predict/types/balance.types';
+import { BalanceResponse } from 'src/types/balance.types';
 import {
   Category,
   Position,
@@ -33,13 +33,13 @@ import {
   GetMarketStatisticsResponse,
   GetOrderBookResponse,
   MarketDataResponse,
-} from 'src/predict/types/market.types';
+} from 'src/types/market.types';
 import {
   AuthMessageResponse,
   AuthResponse,
-} from 'src/predict/types/auth.types';
+} from 'src/types/auth.types';
 import { PredictRepository } from 'src/predict/predict.repository';
-import { fetchWithRetry } from 'src/lib/utils/http';
+import { fetchWithRetry } from 'src/common/utils/http';
 import {
   getTopicLabel as getTopicLabelHelper,
   isBotEnabled,
@@ -53,18 +53,18 @@ import {
   buildBuyConfigKey,
   getMarketTimeLeftMessage,
 } from './bot.service.helper';
-import { WebsocketService } from 'src/predict/websocket/websocket.service';
+import { PredictRealtimeService } from 'src/websocket/predict-realtime.service';
 import {
   AssetPriceUpdate,
   Channel,
   PredictOrderbook,
   PredictWalletEvents,
   RealtimeTopic,
-} from 'src/predict/types/websocket.types';
-import { TradeService } from 'src/predict/trade/trade.service';
-import { RedeemService } from 'src/predict/redeem/redeem.service';
+} from 'src/types/websocket.types';
+import { TradeService } from 'src/trade/trade.service';
+import { RedeemService } from 'src/redeem/redeem.service';
 import { PredictService } from 'src/predict/predict.service';
-import { EXPECTED_SUFFIX } from 'src/lib/helpers/constants';
+import { EXPECTED_SUFFIX } from 'src/common/helpers/constants';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -105,7 +105,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly configService: ConfigService,
     private readonly predictRepository: PredictRepository,
-    private readonly predictRealtimeService: WebsocketService,
+    private readonly predictRealtimeService: PredictRealtimeService,
     private readonly tradeService: TradeService,
     private readonly redeemService: RedeemService,
     private readonly predictService: PredictService,
@@ -269,6 +269,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
               this.logger.log(
                 `Redeemed standard position for market ${position.market.id}.`,
               );
+              // NOTE: This result to undefined
               this.logger.log(
                 `Transaction hash: ${standardResult.receipt?.toJSON().transactionHash}`,
               );
