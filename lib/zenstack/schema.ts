@@ -29,22 +29,49 @@ export class SchemaType implements SchemaDef {
                     name: "slug",
                     type: "String"
                 },
-                amount: {
-                    name: "amount",
+                buyAmount: {
+                    name: "buyAmount",
                     type: "Int"
+                },
+                buyAmountInUsd: {
+                    name: "buyAmountInUsd",
+                    type: "Decimal",
+                    attributes: [{ name: "@db.Decimal", args: [{ name: "p", value: ExpressionUtils.literal(18) }, { name: "s", value: ExpressionUtils.literal(2) }] }]
                 },
                 buyOrderHash: {
                     name: "buyOrderHash",
                     type: "String"
+                },
+                buyTimestamp: {
+                    name: "buyTimestamp",
+                    type: "DateTime"
+                },
+                sellAmount: {
+                    name: "sellAmount",
+                    type: "Int",
+                    optional: true
+                },
+                sellAmountInUsd: {
+                    name: "sellAmountInUsd",
+                    type: "Decimal",
+                    optional: true,
+                    attributes: [{ name: "@db.Decimal", args: [{ name: "p", value: ExpressionUtils.literal(18) }, { name: "s", value: ExpressionUtils.literal(2) }] }]
                 },
                 sellOrderHash: {
                     name: "sellOrderHash",
                     type: "String",
                     optional: true
                 },
-                timestamp: {
-                    name: "timestamp",
-                    type: "DateTime"
+                sellTimestamp: {
+                    name: "sellTimestamp",
+                    type: "DateTime",
+                    optional: true
+                },
+                profitOrLossInUsd: {
+                    name: "profitOrLossInUsd",
+                    type: "Decimal",
+                    optional: true,
+                    attributes: [{ name: "@db.Decimal", args: [{ name: "p", value: ExpressionUtils.literal(18) }, { name: "s", value: ExpressionUtils.literal(2) }] }]
                 },
                 status: {
                     name: "status",

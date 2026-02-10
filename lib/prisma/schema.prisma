@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client"
   output   = "../../generated/prisma"
@@ -11,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
 enum TradeStatus {
@@ -31,34 +25,40 @@ enum MarketVariant {
 }
 
 model Trade {
-  id               Int     @default(autoincrement()) @id
-  marketId         Int
-  slug             String
-  amount           Int
-  buyOrderHash     String
-  sellOrderHash    String?
-  timestamp        DateTime
-  status           TradeStatus
+  id                Int        @id @default(autoincrement())
+  marketId          Int
+  slug              String
+  buyAmount         Int
+  buyAmountInUsd    Decimal   @db.Decimal(18, 2)
+  buyOrderHash      String
+  buyTimestamp      DateTime
+  sellAmount        Int?
+  sellAmountInUsd   Decimal?  @db.Decimal(18, 2)
+  sellOrderHash     String?
+  sellTimestamp     DateTime?
+  profitOrLossInUsd Decimal?  @db.Decimal(18, 2)
+  status            TradeStatus
 }
 
 model BuyPositionConfig {
-  id             Int           @id @default(autoincrement())
-  marketVariant  MarketVariant
-  slugWithSuffix String
-  amount         Int
-  entry          Int
+  id                Int          @id @default(autoincrement())
+  marketVariant     MarketVariant
+  slugWithSuffix    String
+  amount            Int
+  entry             Int
 }
 
 model SellPositionConfig {
-  id                 Int           @id @default(autoincrement())
-  marketVariant      MarketVariant
-  slugWithSuffix     String
-  stopLossPercentage Int
-  amountPercentage   Int
+  id                  Int         @id @default(autoincrement())
+  marketVariant       MarketVariant
+  slugWithSuffix      String
+  stopLossPercentage  Int
+  amountPercentage    Int
 }
 
 model WalletApproval {
-  id             Int      @id @default(autoincrement())
-  walletAddress  String
-  timestamp      DateTime
+  id              Int         @id @default(autoincrement())
+  walletAddress   String
+  timestamp       DateTime
 }
+

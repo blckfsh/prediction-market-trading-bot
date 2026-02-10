@@ -190,8 +190,8 @@ export async function getUnrealizedPnlUsdForToday(params: {
   todayKey: string;
   getTradeByMarketId: (marketId: number) => Promise<{
     status: string;
-    amount: number;
-    timestamp: Date | string;
+    buyAmountInUsd: number;
+    buyTimestamp: Date | string;
   } | null>;
 }): Promise<number> {
   const { positions, todayKey, getTradeByMarketId } = params;
@@ -204,11 +204,11 @@ export async function getUnrealizedPnlUsdForToday(params: {
       if (!trade || trade.status === 'SOLD') {
         return 0;
       }
-      const tradeDateKey = getDateKey(new Date(trade.timestamp));
+      const tradeDateKey = getDateKey(new Date(trade.buyTimestamp));
       if (tradeDateKey !== todayKey) {
         return 0;
       }
-      const entryValueUsd = Number(trade.amount);
+      const entryValueUsd = Number(trade.buyAmountInUsd);
       const currentValueUsd = Number(position.valueUsd);
       if (!Number.isFinite(entryValueUsd) || !Number.isFinite(currentValueUsd)) {
         return 0;
@@ -229,15 +229,15 @@ export async function shouldHaltTradingForDay(params: {
       todayKey: string;
       getTradeByMarketId: (marketId: number) => Promise<{
         status: string;
-        amount: number;
-        timestamp: Date | string;
+        buyAmountInUsd: number;
+        buyTimestamp: Date | string;
       } | null>;
     },
   ) => Promise<number>;
   getTradeByMarketId?: (marketId: number) => Promise<{
     status: string;
-    amount: number;
-    timestamp: Date | string;
+    buyAmountInUsd: number;
+    buyTimestamp: Date | string;
   } | null>;
 }): Promise<{
   shouldHalt: boolean;

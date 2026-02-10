@@ -117,7 +117,7 @@ describe('TradeService', () => {
     repo.getTradeByMarketId = jest.fn().mockResolvedValue({
       id: 1,
       status: 'BOUGHT',
-      amount: 100,
+      buyAmountInUsd: 100,
     });
 
     const sellPositionSpy = jest
@@ -245,8 +245,9 @@ describe('TradeService', () => {
     const market = {
       marketId: 1,
       slug: 'cat',
-      amount: 1,
-      timestamp: new Date(),
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
       status: 'BOUGHT',
     };
 

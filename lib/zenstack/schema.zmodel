@@ -1,3 +1,9 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../../generated/prisma"
+  moduleFormat = "cjs"
+}
+
 datasource db {
   provider = "postgresql"
 }
@@ -22,10 +28,15 @@ model Trade {
   id                Int        @id @default(autoincrement())
   marketId          Int
   slug              String
-  amount            Int
+  buyAmount         Int
+  buyAmountInUsd    Decimal   @db.Decimal(18, 2)
   buyOrderHash      String
+  buyTimestamp      DateTime
+  sellAmount        Int?
+  sellAmountInUsd   Decimal?  @db.Decimal(18, 2)
   sellOrderHash     String?
-  timestamp         DateTime
+  sellTimestamp     DateTime?
+  profitOrLossInUsd Decimal?  @db.Decimal(18, 2)
   status            TradeStatus
 }
 

@@ -204,9 +204,10 @@ interface CreateOrderResponse {
 interface SaveMarketTradeInput {
   marketId: number;
   slug: string;
-  amount: number;
+  buyAmount: number;
+  buyAmountInUsd: number;
   buyOrderHash?: string;
-  timestamp: Date;
+  buyTimestamp: Date;
   status: TradeStatus;
 }
 

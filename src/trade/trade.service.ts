@@ -19,7 +19,7 @@ import {
   SaveMarketTradeInput,
   TradeStrategy,
 } from 'src/types/market.types';
-import { Trade, TradeStatus } from 'generated/prisma/client';
+import { Prisma, Trade, TradeStatus } from 'generated/prisma/client';
 import { PredictRepository } from 'src/predict/predict.repository';
 import { getComplement, normalizeDepth } from 'src/common/utils/orderbook';
 import { MIN_PROFIT_USD } from 'src/common/helpers/constants';
@@ -37,6 +37,16 @@ import {
 } from './trade.service.helper';
 import { parseBooleanFlag } from 'src/common/utils/boolean';
 
+type TradeRecord = Trade & {
+  buyAmount: number;
+  buyAmountInUsd: number | Prisma.Decimal;
+  buyTimestamp: Date;
+  sellAmount?: number | null;
+  sellAmountInUsd?: number | Prisma.Decimal | null;
+  sellTimestamp?: Date | null;
+  profitOrLossInUsd?: number | Prisma.Decimal | null;
+};
+
 @Injectable()
 export class TradeService {
   private readonly logger = new Logger(TradeService.name);
@@ -47,6 +57,15 @@ export class TradeService {
     private readonly configService: ConfigService,
   ) {}
 
+  private readonly tradePicker = (trade: TradeRecord | null) =>
+    trade
+      ? {
+          status: trade.status,
+          buyAmountInUsd: Number(trade.buyAmountInUsd),
+          buyTimestamp: trade.buyTimestamp,
+        }
+      : null;
+
   private async shouldHaltTradingForDay(
     positions?: Position[],
   ): Promise<boolean> {
@@ -55,9 +74,12 @@ export class TradeService {
       dailyRealizedPnlUsdByDate: this.dailyRealizedPnlUsdByDate,
       positions,
       getUnrealizedPnlUsdForToday: getUnrealizedPnlUsdForTodayHelper,
-      getTradeByMarketId: this.predictRepository.getTradeByMarketId.bind(
-        this.predictRepository,
-      ),
+      getTradeByMarketId: async (marketId: number) =>
+        this.tradePicker(
+          (await this.predictRepository.getTradeByMarketId(
+            marketId,
+          )) as TradeRecord | null,
+        ),
     });
     if (
       result.shouldHalt &&
@@ -130,15 +152,15 @@ export class TradeService {
         continue;
       }
 
-      const trade = await this.predictRepository.getTradeByMarketId(
+      const trade = (await this.predictRepository.getTradeByMarketId(
         position.market.id,
-      );
+      )) as TradeRecord | null;
       if (!trade || trade.status === TradeStatus.SOLD) {
         continue;
       }
 
       try {
-        const entryValueUsd = trade.amount;
+        const entryValueUsd = Number(trade.buyAmountInUsd);
         if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
           this.logger.warn(
             `Invalid entry value for market ${position.market.id}. Skipping sell.`,
@@ -252,15 +274,15 @@ export class TradeService {
         continue;
       }
 
-      const trade = await this.predictRepository.getTradeByMarketId(
+      const trade = (await this.predictRepository.getTradeByMarketId(
         position.market.id,
-      );
+      )) as TradeRecord | null;
       if (!trade || trade.status === TradeStatus.SOLD) {
         continue;
       }
 
       try {
-        const entryValueUsd = trade.amount;
+        const entryValueUsd = Number(trade.buyAmountInUsd);
         if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
           this.logger.warn(
             `Invalid entry value for market ${position.market.id}. Skipping sell.`,
@@ -432,8 +454,9 @@ export class TradeService {
       const marketTrade: SaveMarketTradeInput = {
         marketId,
         slug,
-        amount,
-        timestamp: new Date(),
+        buyAmount: amount,
+        buyAmountInUsd: amount,
+        buyTimestamp: new Date(),
         status: TradeStatus.BOUGHT,
       };
       await this.buyPosition({
@@ -544,7 +567,15 @@ export class TradeService {
       return;
     }
 
-    const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 0 : 1;
+    const averagePriceDifference = Math.abs(yesBuyPrice - noBuyPrice);
+    const isGoodToTrade = averagePriceDifference > Number(this.configService.get<number>('PREDICT_TRADE_AVERAGE_PRICE_DIFF'));
+    if (!isGoodToTrade) {
+      this.logger.warn(`Skipping auto-trade for market ${marketId}. Average price difference is less than ${Number(this.configService.get<number>('PREDICT_TRADE_AVERAGE_PRICE_DIFF'))}`);
+      return;
+    }
+
+    // NOTE: The strategy is to buy the lowest price outcome and sell if the profit percentage reached.
+    const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 1 : 0;
     this.logger.log(
       `YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`,
     );
@@ -577,7 +608,7 @@ export class TradeService {
       return;
     }
 
-    const budgetInWei = parseEther(market.amount.toString());
+    const budgetInWei = parseEther(market.buyAmountInUsd.toString());
     const { quantityWei, expectedProfitWei } = getLimitOrderProfit({
       budgetInWei,
       pricePerShareWei,
@@ -665,11 +696,12 @@ export class TradeService {
 
     market.buyOrderHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
+    market.buyTimestamp = new Date();
     return this.predictRepository.saveMarketTrade(market);
   }
 
   private async sellPosition(params: {
-    existingTrade: Trade;
+    existingTrade: TradeRecord;
     position: Position;
     orderBuilder: OrderBuilder;
     signer: Wallet;
@@ -810,10 +842,27 @@ export class TradeService {
 
     const orderHash =
       createOrderResponse.data?.orderHash ?? ZeroHash.toString();
+    const sellAmountInUsd =
+      Number.isFinite(currentValueUsd) && currentValueUsd !== undefined
+        ? currentValueUsd
+        : undefined;
+    const profitOrLossInUsd =
+      Number.isFinite(entryValueUsd) &&
+      Number.isFinite(currentValueUsd) &&
+      entryValueUsd !== undefined &&
+      currentValueUsd !== undefined
+        ? currentValueUsd - entryValueUsd
+        : undefined;
     return this.predictRepository.updateMarketTradeStatus(
       existingTrade.id,
       TradeStatus.SOLD,
-      orderHash,
+      {
+        sellOrderHash: orderHash,
+        sellAmount: existingTrade.buyAmount,
+        sellAmountInUsd,
+        sellTimestamp: new Date(),
+        profitOrLossInUsd,
+      },
     );
   }
 }

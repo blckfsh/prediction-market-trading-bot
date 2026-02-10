@@ -7,7 +7,7 @@ import { ZeroHash } from 'ethers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { SaveMarketTradeInput } from 'src/types/market.types';
 import { MarketVariant } from 'lib/zenstack/models';
-import { TradeStatus } from 'generated/prisma/client';
+import { Prisma, TradeStatus } from 'generated/prisma/client';
 
 @Injectable()
 export class PredictRepository {
@@ -54,18 +54,20 @@ export class PredictRepository {
   async saveMarketTrade({
     marketId,
     slug,
-    amount,
+    buyAmount,
+    buyAmountInUsd,
     buyOrderHash,
-    timestamp,
+    buyTimestamp,
     status,
   }: SaveMarketTradeInput) {
     return this.prisma.trade.create({
       data: {
         marketId,
         slug,
-        amount,
+        buyAmount,
+        buyAmountInUsd: new Prisma.Decimal(buyAmountInUsd),
         buyOrderHash: buyOrderHash ?? ZeroHash.toString(),
-        timestamp,
+        buyTimestamp,
         status,
       },
     });
@@ -74,14 +76,29 @@ export class PredictRepository {
   async updateMarketTradeStatus(
     tradeId: number,
     status: TradeStatus,
-    sellOrderHash?: string,
+    updates?: {
+      sellOrderHash?: string;
+      sellAmount?: number;
+      sellAmountInUsd?: number;
+      sellTimestamp?: Date;
+      profitOrLossInUsd?: number;
+    },
   ) {
     return this.prisma.trade.update({
       where: { id: tradeId },
       data: {
         status,
-        sellOrderHash: sellOrderHash ?? ZeroHash.toString(),
-        timestamp: new Date(),
+        sellOrderHash: updates?.sellOrderHash ?? ZeroHash.toString(),
+        sellAmount: updates?.sellAmount,
+        sellAmountInUsd:
+          updates?.sellAmountInUsd !== undefined
+            ? new Prisma.Decimal(updates.sellAmountInUsd)
+            : undefined,
+        sellTimestamp: updates?.sellTimestamp ?? new Date(),
+        profitOrLossInUsd:
+          updates?.profitOrLossInUsd !== undefined
+            ? new Prisma.Decimal(updates.profitOrLossInUsd)
+            : undefined,
       },
     });
   }
