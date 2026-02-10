@@ -129,8 +129,8 @@ describe('TradeService', () => {
         {
           market: { id: 1, status: 'OPEN', categorySlug: 'cat' },
           outcome: { onChainId: '1' },
-          amount: '1000000000000000000',
-          valueUsd: '130',
+          amount: '2000000000000000000',
+          valueUsd: '120',
         },
       ] as any,
       getOrderBookByMarketId: jest.fn(),
@@ -143,6 +143,49 @@ describe('TradeService', () => {
     });
 
     expect(sellPositionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('evaluateProfitTaking should skip when avg price below target', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) => {
+      if (key === 'PREDICT_PROFIT_TAKING_ENABLED') {
+        return 'true';
+      }
+      if (key === 'PREDICT_PROFIT_TAKING_PERCENTAGE') {
+        return '20';
+      }
+      return undefined;
+    });
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue({
+      id: 1,
+      status: 'BOUGHT',
+      buyAmountInUsd: 100,
+    });
+
+    const sellPositionSpy = jest
+      .spyOn(service as any, 'sellPosition')
+      .mockResolvedValue(undefined);
+
+    await service.evaluateProfitTaking({
+      positions: [
+        {
+          market: { id: 1, status: 'OPEN', categorySlug: 'cat' },
+          outcome: { onChainId: '1' },
+          amount: '2000000000000000000',
+          valueUsd: '119',
+        },
+      ] as any,
+      getOrderBookByMarketId: jest.fn(),
+      getMarketById: jest.fn(),
+      subscribeToOrderbook: jest.fn(),
+      getAmountPercentageForMarketSlug: jest.fn().mockReturnValue(50),
+      createOrder: jest.fn(),
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+    });
+
+    expect(sellPositionSpy).not.toHaveBeenCalled();
   });
 
   it('createOrder should post and return response', async () => {
@@ -292,6 +335,70 @@ describe('TradeService', () => {
     });
 
     expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
+  it('buyPosition should accept decimal average price diff', async () => {
+    (configService.get as jest.Mock).mockImplementation((key: string) =>
+      key === 'PREDICT_TRADE_AVERAGE_PRICE_DIFF' ? '0.1' : undefined,
+    );
+
+    const market = {
+      marketId: 1,
+      slug: 'cat',
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
+      status: 'BOUGHT',
+    };
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+
+    const getOrderBookByMarketId = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [[0.8, 1]],
+        bids: [[0, 1]],
+      },
+    });
+
+    const getMarketById = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        feeRateBps: 9000,
+        isNegRisk: false,
+        isYieldBearing: false,
+        decimalPrecision: 2,
+        outcomes: [{ onChainId: '1' }, { onChainId: '2' }],
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    const subscribeToOrderbook = jest.fn();
+    const createOrderSpy = jest.fn().mockResolvedValue({ success: true } as any);
+    const warnSpy = jest.spyOn((service as any).logger, 'warn');
+
+    await (service as any).buyPosition({
+      market,
+      orderBuilder: {} as any,
+      signer: { address: '0xSigner' } as any,
+      entrySeconds: null,
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook,
+      createOrder: createOrderSpy,
+    });
+
+    expect(createOrderSpy).not.toHaveBeenCalled();
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Invalid PREDICT_TRADE_AVERAGE_PRICE_DIFF'),
+    );
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      expect.stringContaining('Average price difference is less than'),
+    );
   });
 });
 

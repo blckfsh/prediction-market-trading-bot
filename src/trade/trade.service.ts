@@ -32,7 +32,6 @@ import {
   shouldHaltTradingForDay as shouldHaltTradingForDayHelper,
   getLimitOrderPricing,
   getLimitOrderProfit,
-  isPositionReachedProfitThreshold,
   isPositionReachedThreshold,
 } from './trade.service.helper';
 import { parseBooleanFlag } from 'src/common/utils/boolean';
@@ -298,21 +297,39 @@ export class TradeService {
           continue;
         }
 
+        const positionQuantityWei = BigInt(position.amount);
+        const positionQuantity = Number(formatEther(positionQuantityWei));
+        if (!Number.isFinite(positionQuantity) || positionQuantity <= 0) {
+          this.logger.warn(
+            `Invalid position quantity for market ${position.market.id}. Skipping sell.`,
+          );
+          continue;
+        }
+
+        const entryAvgPrice = entryValueUsd / positionQuantity;
+        const currentAvgPrice = currentValueUsd / positionQuantity;
+        const targetAvgPrice =
+          entryAvgPrice * (1 + profitTakingPercentage / 100);
         if (
-          !isPositionReachedProfitThreshold({
-            entryValueUsd,
-            currentValueUsd,
-            profitTakingPercentage,
-          })
+          !Number.isFinite(entryAvgPrice) ||
+          !Number.isFinite(currentAvgPrice) ||
+          !Number.isFinite(targetAvgPrice)
         ) {
           this.logger.warn(
-            `Profit-taking not reached for market ${position.market.id}. Skipping sell.`,
+            `Invalid average price for market ${position.market.id}. Skipping sell.`,
+          );
+          continue;
+        }
+
+        if (currentAvgPrice < targetAvgPrice) {
+          this.logger.warn(
+            `Profit-taking not reached for market ${position.market.id}. Current avg ${currentAvgPrice.toFixed(4)} < target ${targetAvgPrice.toFixed(4)}.`,
           );
           continue;
         }
 
         const profitPercentage =
-          ((currentValueUsd - entryValueUsd) / entryValueUsd) * 100;
+          ((currentAvgPrice - entryAvgPrice) / entryAvgPrice) * 100;
         this.logger.log(
           `Profit-taking reached for market ${position.market.id}: ${profitPercentage.toFixed(2)}% >= ${profitTakingPercentage}%. Selling position.`,
         );
@@ -568,9 +585,30 @@ export class TradeService {
     }
 
     const averagePriceDifference = Math.abs(yesBuyPrice - noBuyPrice);
-    const isGoodToTrade = averagePriceDifference > Number(this.configService.get<number>('PREDICT_TRADE_AVERAGE_PRICE_DIFF'));
+    const rawAveragePriceDiff = this.configService.get<string>(
+      'PREDICT_TRADE_AVERAGE_PRICE_DIFF',
+    );
+    const averagePriceDiffThreshold = Number(rawAveragePriceDiff);
+    if (
+      !Number.isFinite(averagePriceDiffThreshold) ||
+      averagePriceDiffThreshold < 0
+    ) {
+      this.logger.warn(
+        `Skipping auto-trade for market ${marketId}. Invalid PREDICT_TRADE_AVERAGE_PRICE_DIFF: ${rawAveragePriceDiff ?? 'N/A'}.`,
+      );
+      return;
+    }
+    const isGoodToTrade = averagePriceDifference > averagePriceDiffThreshold;
+    this.logger.log(
+      `Yes buy price: ${yesBuyPrice} - No buy price: ${noBuyPrice}`,
+    );
+    this.logger.log(
+      `Average price difference: ${averagePriceDifference} isGoodToTrade: ${isGoodToTrade}`,
+    );
     if (!isGoodToTrade) {
-      this.logger.warn(`Skipping auto-trade for market ${marketId}. Average price difference is less than ${Number(this.configService.get<number>('PREDICT_TRADE_AVERAGE_PRICE_DIFF'))}`);
+      this.logger.warn(
+        `Skipping auto-trade for market ${marketId}. Average price difference is less than ${averagePriceDiffThreshold}`,
+      );
       return;
     }
 
