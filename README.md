@@ -26,6 +26,7 @@ Environment variables are documented here: `docs/env.md`.
 
 - Architecture overview and responsibilities: `docs/architecture.md`
 - End-to-end worker refresh/auto-trade sequence: `docs/architecture.md#sequence-diagram-short-worker-flow`
+- Trading behavior by market variant: `docs/trading.md`
 
 ![Architecture diagram preview](docs/images/predict-bot-architecture-design.png)
 _See the full diagrams in `docs/architecture.md`._
