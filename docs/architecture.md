@@ -13,6 +13,9 @@ This document describes how the prediction market trading bot is structured and 
 
 ## Architecture diagram
 
+![Prediction bot architecture diagram](images/predict-bot-architecture-design.png)
+_Rendered architecture diagram._
+
 ```mermaid
 flowchart LR
   subgraph EXT[External Systems]
@@ -61,6 +64,9 @@ flowchart LR
 ```
 
 ## Sequence diagram (short worker flow)
+
+![Prediction bot worker sequence diagram](images/predict-bot-sequence-diagram.png)
+_Rendered short worker sequence diagram._
 
 ```mermaid
 sequenceDiagram
