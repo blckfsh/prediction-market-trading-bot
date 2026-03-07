@@ -1,6 +1,8 @@
 ## Prediction Market Trading Bot
 
-**Trading Bot to farm airdrops on Predict.fun** ([https://predict.fun/](https://predict.fun/)) that connects to prediction markets, consumes live market data, and executes automated strategies. It includes websocket ingestion, market data typing, and a strategy/service layer for placing trades and managing bot behavior. The goal is to run it to increase a user's trading volume. Soon, it will handle more complex strategies across multiple categories.
+Automated trading bot for [Predict.fun](https://predict.fun/) that connects to the Predict HTTP + WebSocket APIs, evaluates market opportunities in real time, places signed orders, and tracks trades/configuration in PostgreSQL via Prisma.
+
+The bot is worker-oriented: `BotService` handles startup and refresh loops, `TradeService` executes auto-trade and sell logic (stop-loss/profit-taking), and `PredictRepository` persists trade/config state. This is designed for continuous execution to increase trading activity while enforcing configurable risk and timing controls.
 
 ![Predict UI overview](docs/images/predictdotfun-home.png)
 ![Predict bot interface](docs/images/predictbot-interface.png)
@@ -19,6 +21,11 @@ pnpm install
 ## Environment variables
 
 Environment variables are documented here: `docs/env.md`.
+
+## Architecture and flow
+
+- Architecture overview and responsibilities: `docs/architecture.md`
+- End-to-end worker refresh/auto-trade sequence: `docs/architecture.md#sequence-diagram-short-worker-flow`
 
 ## Run tests
 
