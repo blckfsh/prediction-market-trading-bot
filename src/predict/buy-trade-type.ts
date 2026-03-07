@@ -1,31 +1,49 @@
 const BUY_TRADE_TYPES = [
   'yes',
   'no',
-  'greater-than-no',
-  'less-than-no',
+  'avg-price',
+  'na',
 ] as const;
 
 type BuyTradeType = (typeof BUY_TRADE_TYPES)[number];
 
-const DEFAULT_BUY_TRADE_TYPE: BuyTradeType = 'greater-than-no';
+const DEFAULT_BUY_TRADE_TYPE: BuyTradeType = 'avg-price';
 
-function normalizeBuyTradeType(value?: string | null): BuyTradeType {
+function normalizeBuyTradeType(
+  value?: string | null,
+  options?: { defaultType?: BuyTradeType },
+): BuyTradeType {
+  const defaultType = options?.defaultType ?? DEFAULT_BUY_TRADE_TYPE;
   if (!value) {
-    return DEFAULT_BUY_TRADE_TYPE;
+    return defaultType;
   }
-  return BUY_TRADE_TYPES.includes(value as BuyTradeType)
-    ? (value as BuyTradeType)
-    : DEFAULT_BUY_TRADE_TYPE;
+  const normalizedValue = value.trim().toLowerCase();
+  if (normalizedValue === 'greater-than-no') {
+    return 'yes';
+  }
+  if (normalizedValue === 'less-than-no') {
+    return 'no';
+  }
+  return BUY_TRADE_TYPES.includes(normalizedValue as BuyTradeType)
+    ? (normalizedValue as BuyTradeType)
+    : defaultType;
 }
 
-function getChosenOutcomeIndexByTradeType(tradeType: BuyTradeType): 0 | 1 {
+function getChosenOutcomeIndexByTradeType(params: {
+  tradeType: BuyTradeType;
+  yesBuyPrice: number;
+  noBuyPrice: number;
+}): 0 | 1 | null {
+  const { tradeType, yesBuyPrice, noBuyPrice } = params;
   switch (tradeType) {
     case 'yes':
-    case 'greater-than-no':
       return 0;
     case 'no':
-    case 'less-than-no':
       return 1;
+    case 'avg-price':
+      return yesBuyPrice > noBuyPrice ? 0 : 1;
+    case 'na':
+      return null;
   }
 }
 

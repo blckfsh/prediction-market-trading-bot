@@ -362,6 +362,7 @@ export class TradeService {
     getTradeAmountForMarketSlug: (slug: string) => number;
     getEntrySecondsForMarketSlug: (slug: string) => number | null;
     getBuyTradeTypeForMarketSlug: (slug: string) => BuyTradeType;
+    getSportsBetKeywordForMarketSlug?: (slug: string) => string | null;
     orderBuilder: OrderBuilder;
     signer: Wallet;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
@@ -382,6 +383,7 @@ export class TradeService {
       getTradeAmountForMarketSlug,
       getEntrySecondsForMarketSlug,
       getBuyTradeTypeForMarketSlug,
+      getSportsBetKeywordForMarketSlug,
       orderBuilder,
       signer,
       getOrderBookByMarketId,
@@ -424,6 +426,8 @@ export class TradeService {
       }
       const amount = getTradeAmountForMarketSlug(slug);
       const buyTradeType = getBuyTradeTypeForMarketSlug(slug);
+      const sportsBetKeyword =
+        getSportsBetKeywordForMarketSlug?.(slug) ?? null;
       const marketTrade: SaveMarketTradeInput = {
         marketId,
         slug,
@@ -438,6 +442,7 @@ export class TradeService {
         signer,
         entrySeconds,
         buyTradeType,
+        sportsBetKeyword,
         getOrderBookByMarketId,
         getMarketById,
         subscribeToOrderbook,
@@ -460,6 +465,7 @@ export class TradeService {
     signer: Wallet;
     entrySeconds?: number | null;
     buyTradeType: BuyTradeType;
+    sportsBetKeyword?: string | null;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
@@ -476,6 +482,7 @@ export class TradeService {
       signer,
       entrySeconds,
       buyTradeType,
+      sportsBetKeyword,
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,
@@ -538,7 +545,40 @@ export class TradeService {
       );
       return;
     }
-    const chosenOutcomeIndex = getChosenOutcomeIndexByTradeType(buyTradeType);
+    let chosenOutcomeIndex: 0 | 1 | null = null;
+    if (sportsBetKeyword) {
+      const normalizedKeyword = sportsBetKeyword.trim().toLowerCase();
+      if (normalizedKeyword.length > 0) {
+        const matchedIndex = marketData.data.outcomes.findIndex((outcome) =>
+          outcome.name.toLowerCase().includes(normalizedKeyword),
+        );
+        if (matchedIndex === -1) {
+          this.logger.warn(
+            `No outcome matched sports keyword "${sportsBetKeyword}" for market ${marketId}. Skipping trade.`,
+          );
+          return;
+        } else if (matchedIndex !== 0 && matchedIndex !== 1) {
+          this.logger.warn(
+            `Matched outcome index ${matchedIndex} for sports keyword "${sportsBetKeyword}" is unsupported. Skipping trade.`,
+          );
+          return;
+        } else {
+          chosenOutcomeIndex = matchedIndex;
+        }
+      }
+    } else {
+      chosenOutcomeIndex = getChosenOutcomeIndexByTradeType({
+        tradeType: buyTradeType,
+        yesBuyPrice,
+        noBuyPrice,
+      });
+    }
+    if (chosenOutcomeIndex === null) {
+      this.logger.warn(
+        `Skipping auto-trade for market ${marketId}. Trade type "${buyTradeType}" does not map to a binary outcome.`,
+      );
+      return;
+    }
 
     this.logger.log(
       `YES: ${yesBuyPrice} - NO: ${noBuyPrice} - TRADE_TYPE: ${buyTradeType} => Outcome Index: ${chosenOutcomeIndex}`,

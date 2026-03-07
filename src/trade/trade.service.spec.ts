@@ -186,7 +186,7 @@ describe('TradeService', () => {
       getMarketSlugById: jest.fn(),
       getTradeAmountForMarketSlug: jest.fn(),
       getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
-      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('greater-than-no'),
+      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('avg-price'),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       getOrderBookByMarketId: jest.fn(),
@@ -228,7 +228,7 @@ describe('TradeService', () => {
       getMarketSlugById: jest.fn().mockReturnValue('slug'),
       getTradeAmountForMarketSlug: jest.fn().mockReturnValue(1),
       getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
-      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('greater-than-no'),
+      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('avg-price'),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       getOrderBookByMarketId: jest.fn(),
@@ -294,6 +294,181 @@ describe('TradeService', () => {
       createOrder: createOrderSpy,
     });
 
+    expect(createOrderSpy).not.toHaveBeenCalled();
+  });
+
+  it('buyPosition should choose outcome by sports keyword when provided', async () => {
+    const market = {
+      marketId: 1,
+      slug: 'lol-g2-vs-t1-2026-03-07',
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
+      status: 'BOUGHT',
+    };
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.saveMarketTrade = jest.fn().mockResolvedValue({ id: 99 });
+
+    const getOrderBookByMarketId = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [[0.4, 10]],
+        bids: [[0.4, 10]],
+      },
+    });
+
+    const getMarketById = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        feeRateBps: 100,
+        isNegRisk: false,
+        isYieldBearing: false,
+        decimalPrecision: 2,
+        outcomes: [
+          { name: 'T1', onChainId: '1' },
+          { name: 'G2', onChainId: '2' },
+        ],
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    const buildOrderMock = jest.fn().mockReturnValue({
+      maker: '0xSigner',
+      signer: '0xSigner',
+      taker: '0x0000000000000000000000000000000000000000',
+      tokenId: 2n,
+      makerAmount: 1000000000000000000n,
+      takerAmount: 1000000000000000000n,
+      expiration: 1n,
+      nonce: 1n,
+      feeRateBps: 100n,
+      side: 0,
+      signatureType: 0,
+      salt: 1n,
+    });
+    const orderBuilder = {
+      getLimitOrderAmounts: jest.fn().mockReturnValue({
+        pricePerShare: 0.6,
+        makerAmount: 1000000000000000000n,
+        takerAmount: 1000000000000000000n,
+      }),
+      buildOrder: buildOrderMock,
+      buildTypedData: jest.fn().mockReturnValue({}),
+      signTypedDataOrder: jest.fn().mockResolvedValue({
+        maker: '0xSigner',
+        signer: '0xSigner',
+        taker: '0x0000000000000000000000000000000000000000',
+        tokenId: 2n,
+        makerAmount: 1000000000000000000n,
+        takerAmount: 1000000000000000000n,
+        expiration: 1n,
+        nonce: 1n,
+        feeRateBps: 100n,
+        side: 0,
+        signatureType: 0,
+        signature: '0xsig',
+        salt: 1n,
+      }),
+      buildTypedDataHash: jest.fn().mockResolvedValue('0xhash'),
+    };
+
+    const createOrderSpy = jest.fn().mockResolvedValue({
+      success: true,
+      data: { orderHash: '0xorderhash' },
+    });
+
+    await (service as any).buyPosition({
+      market,
+      orderBuilder,
+      signer: { address: '0xSigner' } as any,
+      entrySeconds: null,
+      buyTradeType: 'yes',
+      sportsBetKeyword: 'g2',
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook: jest.fn(),
+      createOrder: createOrderSpy,
+    });
+
+    expect(buildOrderMock).toHaveBeenCalledWith(
+      'LIMIT',
+      expect.objectContaining({
+        tokenId: '2',
+      }),
+    );
+    expect(createOrderSpy).toHaveBeenCalled();
+  });
+
+  it('buyPosition should skip when sports keyword does not match outcomes', async () => {
+    const market = {
+      marketId: 1,
+      slug: 'lol-g2-vs-t1-2026-03-07',
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
+      status: 'BOUGHT',
+    };
+
+    const repo = predictRepository as any;
+    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.saveMarketTrade = jest.fn();
+
+    const getOrderBookByMarketId = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        marketId: 1,
+        updateTimestampMs: Date.now(),
+        asks: [[0.4, 10]],
+        bids: [[0.4, 10]],
+      },
+    });
+
+    const getMarketById = jest.fn().mockResolvedValue({
+      success: true,
+      data: {
+        id: 1,
+        feeRateBps: 100,
+        isNegRisk: false,
+        isYieldBearing: false,
+        decimalPrecision: 2,
+        outcomes: [
+          { name: 'T1', onChainId: '1' },
+          { name: 'FNC', onChainId: '2' },
+        ],
+        createdAt: new Date().toISOString(),
+      },
+    });
+
+    const buildOrderMock = jest.fn();
+    const orderBuilder = {
+      getLimitOrderAmounts: jest.fn(),
+      buildOrder: buildOrderMock,
+      buildTypedData: jest.fn(),
+      signTypedDataOrder: jest.fn(),
+      buildTypedDataHash: jest.fn(),
+    };
+
+    const createOrderSpy = jest.fn();
+
+    await (service as any).buyPosition({
+      market,
+      orderBuilder,
+      signer: { address: '0xSigner' } as any,
+      entrySeconds: null,
+      buyTradeType: 'yes',
+      sportsBetKeyword: 'g2',
+      getOrderBookByMarketId,
+      getMarketById,
+      subscribeToOrderbook: jest.fn(),
+      createOrder: createOrderSpy,
+    });
+
+    expect(buildOrderMock).not.toHaveBeenCalled();
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 });

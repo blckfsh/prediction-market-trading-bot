@@ -539,7 +539,7 @@ describe('BotService', () => {
     const requestBody = JSON.parse(
       (global.fetch as jest.Mock).mock.calls[0][1].body as string,
     );
-    expect(requestBody).toEqual({ referralCode: REFERRAL_CODE });
+    expect(requestBody).toEqual({ referralCode: String(REFERRAL_CODE) });
     expect(result).toBe(true);
   });
 
