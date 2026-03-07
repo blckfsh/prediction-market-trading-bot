@@ -1,12 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  formatEther,
-  parseEther,
-  Wallet,
-  ZeroAddress,
-  ZeroHash,
-} from 'ethers';
+import { formatEther, parseEther, Wallet, ZeroAddress, ZeroHash } from 'ethers';
 import { OrderBuilder, Side } from '@predictdotfun/sdk';
 import {
   CreateOrderBody,
@@ -25,6 +19,7 @@ import { getComplement, normalizeDepth } from 'src/common/utils/orderbook';
 import { MIN_PROFIT_USD } from 'src/common/helpers/constants';
 import {
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
+  getChosenOutcomeIndexByTradeType,
   getMarketTimeLeftSeconds as getMarketTimeLeftSecondsHelper,
   isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
   getUnrealizedPnlUsdForToday as getUnrealizedPnlUsdForTodayHelper,
@@ -36,6 +31,7 @@ import {
   isPositionReachedThreshold,
 } from './trade.service.helper';
 import { parseBooleanFlag } from 'src/common/utils/boolean';
+import type { BuyTradeType } from 'src/predict/buy-trade-type';
 
 @Injectable()
 export class TradeService {
@@ -69,9 +65,7 @@ export class TradeService {
         `Daily ${result.reason} limit reached. PnL: ${result.totalPnlUsd.toFixed(2)} ${
           result.reason === 'profit' ? '>=' : '<='
         } ${
-          result.reason === 'profit'
-            ? result.limitUsd
-            : -result.limitUsd
+          result.reason === 'profit' ? result.limitUsd : -result.limitUsd
         }. Halting trades for today.`,
       );
     }
@@ -103,8 +97,6 @@ export class TradeService {
     if (await this.shouldHaltTradingForDay(positions)) {
       return;
     }
-
-    
 
     for (const position of positions) {
       if (position.market.status === MarketStatus.RESOLVED) {
@@ -138,7 +130,7 @@ export class TradeService {
       }
 
       try {
-        const entryValueUsd = trade.amount;
+        const entryValueUsd = Number(trade.buyAmountInUsd);
         if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
           this.logger.warn(
             `Invalid entry value for market ${position.market.id}. Skipping sell.`,
@@ -214,7 +206,10 @@ export class TradeService {
       'PREDICT_PROFIT_TAKING_PERCENTAGE',
     );
     const profitTakingPercentage = Number(rawProfitPercentage);
-    if (!Number.isFinite(profitTakingPercentage) || profitTakingPercentage <= 0) {
+    if (
+      !Number.isFinite(profitTakingPercentage) ||
+      profitTakingPercentage <= 0
+    ) {
       this.logger.warn(
         `Profit-taking skipped. Invalid PREDICT_PROFIT_TAKING_PERCENTAGE: ${rawProfitPercentage ?? 'N/A'}.`,
       );
@@ -234,8 +229,6 @@ export class TradeService {
     if (await this.shouldHaltTradingForDay(positions)) {
       return;
     }
-
-    
 
     for (const position of positions) {
       if (position.market.status === MarketStatus.RESOLVED) {
@@ -260,7 +253,7 @@ export class TradeService {
       }
 
       try {
-        const entryValueUsd = trade.amount;
+        const entryValueUsd = Number(trade.buyAmountInUsd);
         if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
           this.logger.warn(
             `Invalid entry value for market ${position.market.id}. Skipping sell.`,
@@ -368,6 +361,7 @@ export class TradeService {
     getMarketSlugById: (marketId: number) => string | null;
     getTradeAmountForMarketSlug: (slug: string) => number;
     getEntrySecondsForMarketSlug: (slug: string) => number | null;
+    getBuyTradeTypeForMarketSlug: (slug: string) => BuyTradeType;
     orderBuilder: OrderBuilder;
     signer: Wallet;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
@@ -387,6 +381,7 @@ export class TradeService {
       getMarketSlugById,
       getTradeAmountForMarketSlug,
       getEntrySecondsForMarketSlug,
+      getBuyTradeTypeForMarketSlug,
       orderBuilder,
       signer,
       getOrderBookByMarketId,
@@ -411,7 +406,6 @@ export class TradeService {
       return;
     }
 
-    
     marketTradeInFlight.add(marketId);
     marketTradeLastAttemptAt.set(marketId, Date.now());
 
@@ -420,7 +414,7 @@ export class TradeService {
       if (!slug) {
         throw new Error(`Market slug not found for marketId ${marketId}`);
       }
-      
+
       const entrySeconds = getEntrySecondsForMarketSlug(slug);
       if (entrySeconds === null) {
         this.logger.warn(
@@ -429,11 +423,13 @@ export class TradeService {
         return;
       }
       const amount = getTradeAmountForMarketSlug(slug);
+      const buyTradeType = getBuyTradeTypeForMarketSlug(slug);
       const marketTrade: SaveMarketTradeInput = {
         marketId,
         slug,
-        amount,
-        timestamp: new Date(),
+        buyAmount: amount,
+        buyAmountInUsd: amount,
+        buyTimestamp: new Date(),
         status: TradeStatus.BOUGHT,
       };
       await this.buyPosition({
@@ -441,6 +437,7 @@ export class TradeService {
         orderBuilder,
         signer,
         entrySeconds,
+        buyTradeType,
         getOrderBookByMarketId,
         getMarketById,
         subscribeToOrderbook,
@@ -462,6 +459,7 @@ export class TradeService {
     orderBuilder: OrderBuilder;
     signer: Wallet;
     entrySeconds?: number | null;
+    buyTradeType: BuyTradeType;
     getOrderBookByMarketId: (marketId: number) => Promise<GetOrderBookResponse>;
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
@@ -477,6 +475,7 @@ export class TradeService {
       orderBuilder,
       signer,
       entrySeconds,
+      buyTradeType,
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,
@@ -539,14 +538,10 @@ export class TradeService {
       );
       return;
     }
-    if (yesBuyPrice === noBuyPrice) {
-      this.logger.warn('Yes and no buy prices are equal');
-      return;
-    }
+    const chosenOutcomeIndex = getChosenOutcomeIndexByTradeType(buyTradeType);
 
-    const chosenOutcomeIndex: number = yesBuyPrice > noBuyPrice ? 0 : 1;
     this.logger.log(
-      `YES: ${yesBuyPrice} - NO: ${noBuyPrice} => Outcome Index: ${chosenOutcomeIndex}`,
+      `YES: ${yesBuyPrice} - NO: ${noBuyPrice} - TRADE_TYPE: ${buyTradeType} => Outcome Index: ${chosenOutcomeIndex}`,
     );
     const outcomeOnChainId =
       marketData.data.outcomes[chosenOutcomeIndex].onChainId;
@@ -577,7 +572,7 @@ export class TradeService {
       return;
     }
 
-    const budgetInWei = parseEther(market.amount.toString());
+    const budgetInWei = parseEther(market.buyAmount.toString());
     const { quantityWei, expectedProfitWei } = getLimitOrderProfit({
       budgetInWei,
       pricePerShareWei,
@@ -717,8 +712,7 @@ export class TradeService {
     const baseQuantityWei = BigInt(position.amount);
     const percentage =
       amountPercentage >= 100 ? 100 : Math.floor(amountPercentage);
-    const quantityWei =
-      (baseQuantityWei * BigInt(percentage)) / 100n;
+    const quantityWei = (baseQuantityWei * BigInt(percentage)) / 100n;
     if (quantityWei <= 0n) {
       this.logger.warn(
         `Skipping sell for market ${position.market.id}. Quantity is less than or equal to 0`,

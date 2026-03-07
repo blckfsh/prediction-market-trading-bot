@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { Category, MarketVariant } from 'src/types/market.types';
+import { Category } from 'src/types/market.types';
 import { parseBooleanFlag } from 'src/common/utils/boolean';
 import {
   Channel,
@@ -32,15 +32,11 @@ function isWebsocketEnabled(configService: ConfigService): boolean {
 function filterAndSortCryptoUpDownCategories(
   categories: Category[],
 ): Category[] {
-  return categories
-    .filter(
-      (category) => category.marketVariant === MarketVariant.CRYPTO_UP_DOWN,
-    )
-    .sort((a, b) => {
-      const dateA = new Date(a.startsAt).getTime();
-      const dateB = new Date(b.startsAt).getTime();
-      return dateB - dateA; // Descending order (newest first)
-    });
+  return categories.sort((a, b) => {
+    const dateA = new Date(a.startsAt).getTime();
+    const dateB = new Date(b.startsAt).getTime();
+    return dateB - dateA; // Descending order (newest first)
+  });
 }
 
 async function refreshCategoriesAndSubscribe(
@@ -223,21 +219,37 @@ function getMarketTimeLeftMessage(
     Category['markets'][number],
     'id' | 'createdAt' | 'boostStartsAt' | 'boostEndsAt'
   >,
+  options?: {
+    categoryEndsAt?: string | null;
+    preferCategoryEndsAt?: boolean;
+  },
 ): string | null {
   const createdAtDate = new Date(market.createdAt);
   if (Number.isNaN(createdAtDate.getTime())) {
     return `Market ${market.id} createdAt is invalid: ${market.createdAt}`;
   }
-  const durationMs = getMarketDurationMs(market);
-  if (!durationMs) {
-    return `Market ${market.id} duration not found; cannot compute time left`;
+  const useCategoryEndsAt = options?.preferCategoryEndsAt === true;
+  const durationMs = useCategoryEndsAt ? null : getMarketDurationMs(market);
+  if (durationMs) {
+    const expiresAtMs = createdAtDate.getTime() + durationMs;
+    const diffMs = Math.max(0, expiresAtMs - Date.now());
+    const totalSeconds = Math.floor(diffMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`;
   }
-  const expiresAtMs = createdAtDate.getTime() + durationMs;
-  const diffMs = Math.max(0, expiresAtMs - Date.now());
-  const totalSeconds = Math.floor(diffMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `Market ${market.id} time left until expiry: ${minutes}m ${seconds}s`;
+  const categoryEndsAt = options?.categoryEndsAt;
+  if (categoryEndsAt) {
+    const endsAtDate = new Date(categoryEndsAt);
+    if (!Number.isNaN(endsAtDate.getTime())) {
+      const diffMs = Math.max(0, endsAtDate.getTime() - Date.now());
+      const totalSeconds = Math.floor(diffMs / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return `Market ${market.id} time left until category end: ${minutes}m ${seconds}s`;
+    }
+  }
+  return `Market ${market.id} duration not found; cannot compute time left`;
 }
 
 export {

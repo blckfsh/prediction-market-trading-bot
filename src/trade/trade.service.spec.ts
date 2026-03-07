@@ -117,7 +117,8 @@ describe('TradeService', () => {
     repo.getTradeByMarketId = jest.fn().mockResolvedValue({
       id: 1,
       status: 'BOUGHT',
-      amount: 100,
+      buyAmount: 100,
+      buyAmountInUsd: 100,
     });
 
     const sellPositionSpy = jest
@@ -185,6 +186,7 @@ describe('TradeService', () => {
       getMarketSlugById: jest.fn(),
       getTradeAmountForMarketSlug: jest.fn(),
       getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
+      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('greater-than-no'),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       getOrderBookByMarketId: jest.fn(),
@@ -226,6 +228,7 @@ describe('TradeService', () => {
       getMarketSlugById: jest.fn().mockReturnValue('slug'),
       getTradeAmountForMarketSlug: jest.fn().mockReturnValue(1),
       getEntrySecondsForMarketSlug: jest.fn().mockReturnValue(0),
+      getBuyTradeTypeForMarketSlug: jest.fn().mockReturnValue('greater-than-no'),
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       getOrderBookByMarketId: jest.fn(),
@@ -245,8 +248,9 @@ describe('TradeService', () => {
     const market = {
       marketId: 1,
       slug: 'cat',
-      amount: 1,
-      timestamp: new Date(),
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
       status: 'BOUGHT',
     };
 

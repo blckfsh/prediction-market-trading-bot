@@ -22,10 +22,15 @@ model Trade {
   id                Int        @id @default(autoincrement())
   marketId          Int
   slug              String
-  amount            Int
+  buyAmount         Int
+  buyAmountInUsd    Decimal
   buyOrderHash      String
   sellOrderHash     String?
-  timestamp         DateTime
+  buyTimestamp      DateTime
+  sellAmount        Int?
+  sellAmountInUsd   Decimal?
+  sellTimestamp     DateTime?
+  profitOrLossInUsd Decimal?
   status            TradeStatus
 }
 
@@ -35,6 +40,7 @@ model BuyPositionConfig {
   slugWithSuffix    String
   amount            Int
   entry             Int
+  tradeType         String       @default("greater-than-no")
 }
 
 model SellPositionConfig {
@@ -49,5 +55,11 @@ model WalletApproval {
   id              Int         @id @default(autoincrement())
   walletAddress   String
   timestamp       DateTime
+}
+
+model SportsBet {
+  id         Int         @id @default(autoincrement())
+  keyword    String
+  category   String
 }
 

@@ -9,6 +9,7 @@ import { PredictRepository } from './predict.repository';
 import { REFERRAL_CODE } from 'src/common/helpers/constants';
 import { OrderBuilder } from '@predictdotfun/sdk';
 import { SetApprovalsResult } from '@predictdotfun/sdk';
+import type { BuyTradeType } from 'src/predict/buy-trade-type';
 
 @Injectable()
 export class PredictService {
@@ -31,12 +32,14 @@ export class PredictService {
     slugWithSuffix: string,
     amount: number,
     entry: number,
+    tradeType?: BuyTradeType,
   ): Promise<BuyPositionConfig> {
     return this.predictRepository.saveBuyPositionConfig(
       marketVariant,
       slugWithSuffix,
       amount,
       entry,
+      tradeType,
     );
   }
 
@@ -46,6 +49,7 @@ export class PredictService {
     updates: {
       amount?: number;
       entry?: number;
+      tradeType?: BuyTradeType;
     },
   ): Promise<BuyPositionConfig> {
     return this.predictRepository.updateBuyPositionConfig(
