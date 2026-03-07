@@ -19,7 +19,7 @@ describe('PredictController', () => {
     slugWithSuffix: 'crypto-up-down-1',
     amount: 100,
     entry: 25,
-    tradeType: 'greater-than-no',
+    tradeType: 'avg-price',
   };
 
   const sellConfig = {

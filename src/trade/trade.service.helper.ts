@@ -115,15 +115,22 @@ export function isWebsocketAutoTradeEnabled(
 }
 
 export function getChosenOutcomeIndexByTradeType(
-  tradeType: BuyTradeType,
-): 0 | 1 {
+  params: {
+    tradeType: BuyTradeType;
+    yesBuyPrice: number;
+    noBuyPrice: number;
+  },
+): 0 | 1 | null {
+  const { tradeType, yesBuyPrice, noBuyPrice } = params;
   switch (tradeType) {
     case 'yes':
-    case 'greater-than-no':
       return 0;
     case 'no':
-    case 'less-than-no':
       return 1;
+    case 'avg-price':
+      return yesBuyPrice > noBuyPrice ? 0 : 1;
+    case 'na':
+      return null;
   }
 }
 

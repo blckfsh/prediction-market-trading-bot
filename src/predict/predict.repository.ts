@@ -133,7 +133,10 @@ export class PredictRepository {
         slugWithSuffix,
         amount,
         entry,
-        tradeType: normalizeBuyTradeType(tradeType),
+        tradeType: normalizeBuyTradeType(tradeType, {
+          defaultType:
+            marketVariant === MarketVariant.SPORTS_MATCH ? 'na' : 'avg-price',
+        }),
       },
     });
   }

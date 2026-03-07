@@ -110,12 +110,13 @@ export class PredictService {
       const headers = new Headers();
       headers.append('x-api-key', apiKey);
       headers.append('Authorization', `Bearer ${token}`);
+      headers.append('Content-Type', 'application/json');
 
       const requestOptions = {
         method: 'POST',
         headers: headers,
         body: JSON.stringify({
-          referralCode: referralCode ?? REFERRAL_CODE,
+          referralCode: String(referralCode ?? REFERRAL_CODE),
         }),
         redirect: 'follow',
       };

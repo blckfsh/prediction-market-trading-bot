@@ -66,7 +66,6 @@ import { RedeemService } from 'src/redeem/redeem.service';
 import { PredictService } from 'src/predict/predict.service';
 import { SUPPORTED_SLUG_KEYWORDS } from 'src/common/helpers/constants';
 import {
-  DEFAULT_BUY_TRADE_TYPE,
   normalizeBuyTradeType,
   type BuyTradeType,
 } from 'src/predict/buy-trade-type';
@@ -348,6 +347,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         signature: signature,
         message: responseData.data.message,
       });
+      headers.append('Content-Type', 'application/json');
 
       const postRequestOptions: RequestInit = {
         method: 'POST',
@@ -748,6 +748,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             this.getEntrySecondsForMarketSlug.bind(this),
           getBuyTradeTypeForMarketSlug:
             this.getBuyTradeTypeForMarketSlug.bind(this),
+          getSportsBetKeywordForMarketSlug:
+            this.getSportsBetKeywordForSlug.bind(this),
           orderBuilder: this.orderBuilder!,
           signer: this.signer!,
           getOrderBookByMarketId: this.getOrderBookByMarketId.bind(this),
@@ -1202,22 +1204,29 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getBuyTradeTypeForMarketSlug(slug: string): BuyTradeType {
+    const category = this.categories.find((item) => item.slug === slug);
     const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
-    if (!supportedKeyword) {
-      return DEFAULT_BUY_TRADE_TYPE;
+    const buyConfig = supportedKeyword
+      ? this.buyPositionConfigsByKey.get(buildBuyConfigKey(supportedKeyword))
+      : undefined;
+    if (category?.marketVariant === MarketVariant.SPORTS_MATCH) {
+      return normalizeBuyTradeType(buyConfig?.tradeType, {
+        defaultType: 'na',
+      });
     }
-    const buyConfig = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(supportedKeyword),
-    );
     return normalizeBuyTradeType(buyConfig?.tradeType);
   }
 
   private hasSportsBetKeywordForSlug(slug: string): boolean {
+    return this.getSportsBetKeywordForSlug(slug) !== null;
+  }
+
+  private getSportsBetKeywordForSlug(slug: string): string | null {
     if (this.sportsBets.length === 0) {
-      return false;
+      return null;
     }
     const normalizedSlug = slug.toLowerCase();
-    return this.sportsBets.some((bet) => {
+    const match = this.sportsBets.find((bet) => {
       const category = bet.category.trim().toLowerCase();
       const keyword = bet.keyword.trim().toLowerCase();
       if (!category || !keyword) {
@@ -1231,6 +1240,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         normalizedSlug.includes(keyword)
       );
     });
+    return match ? match.keyword.trim() : null;
   }
 
   private getStopLossPercentageForMarketSlug(slug: string): number | null {
