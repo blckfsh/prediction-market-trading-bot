@@ -592,8 +592,9 @@ describe('BotService', () => {
     const market: SaveMarketTradeInput = {
       marketId: 1,
       slug: 'cat',
-      amount: 1,
-      timestamp: new Date(),
+      buyAmount: 1,
+      buyAmountInUsd: 1,
+      buyTimestamp: new Date(),
       status: TradeStatus.BOUGHT,
     };
 
@@ -665,7 +666,12 @@ describe('BotService', () => {
     const repo = predictRepository as any;
     repo.getTradeByMarketId = jest
       .fn()
-      .mockResolvedValueOnce({ id: 1, status: TradeStatus.BOUGHT, amount: 100 });
+      .mockResolvedValueOnce({
+        id: 1,
+        status: TradeStatus.BOUGHT,
+        buyAmount: 100,
+        buyAmountInUsd: 100,
+      });
 
     const sellPositionSpy = jest
       .spyOn(tradeService as any, 'sellPosition')
@@ -710,7 +716,8 @@ describe('BotService', () => {
     repo.getTradeByMarketId = jest.fn().mockResolvedValue({
       id: 3,
       status: TradeStatus.SOLD,
-      amount: 100,
+      buyAmount: 100,
+      buyAmountInUsd: 100,
     });
 
     const sellPositionSpy = jest

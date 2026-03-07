@@ -29,9 +29,13 @@ export class SchemaType implements SchemaDef {
                     name: "slug",
                     type: "String"
                 },
-                amount: {
-                    name: "amount",
+                buyAmount: {
+                    name: "buyAmount",
                     type: "Int"
+                },
+                buyAmountInUsd: {
+                    name: "buyAmountInUsd",
+                    type: "Decimal"
                 },
                 buyOrderHash: {
                     name: "buyOrderHash",
@@ -42,9 +46,29 @@ export class SchemaType implements SchemaDef {
                     type: "String",
                     optional: true
                 },
-                timestamp: {
-                    name: "timestamp",
+                buyTimestamp: {
+                    name: "buyTimestamp",
                     type: "DateTime"
+                },
+                sellAmount: {
+                    name: "sellAmount",
+                    type: "Int",
+                    optional: true
+                },
+                sellAmountInUsd: {
+                    name: "sellAmountInUsd",
+                    type: "Decimal",
+                    optional: true
+                },
+                sellTimestamp: {
+                    name: "sellTimestamp",
+                    type: "DateTime",
+                    optional: true
+                },
+                profitOrLossInUsd: {
+                    name: "profitOrLossInUsd",
+                    type: "Decimal",
+                    optional: true
                 },
                 status: {
                     name: "status",
@@ -81,6 +105,10 @@ export class SchemaType implements SchemaDef {
                 entry: {
                     name: "entry",
                     type: "Int"
+                },
+                tradeType: {
+                    name: "tradeType",
+                    type: "String"
                 }
             },
             idFields: ["id"],
@@ -137,6 +165,30 @@ export class SchemaType implements SchemaDef {
                 timestamp: {
                     name: "timestamp",
                     type: "DateTime"
+                }
+            },
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" }
+            }
+        },
+        SportsBet: {
+            name: "SportsBet",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                keyword: {
+                    name: "keyword",
+                    type: "String"
+                },
+                category: {
+                    name: "category",
+                    type: "String"
                 }
             },
             idFields: ["id"],

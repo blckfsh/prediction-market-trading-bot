@@ -64,7 +64,12 @@ import {
 import { TradeService } from 'src/trade/trade.service';
 import { RedeemService } from 'src/redeem/redeem.service';
 import { PredictService } from 'src/predict/predict.service';
-import { EXPECTED_SUFFIX } from 'src/common/helpers/constants';
+import { SUPPORTED_SLUG_KEYWORDS } from 'src/common/helpers/constants';
+import {
+  DEFAULT_BUY_TRADE_TYPE,
+  normalizeBuyTradeType,
+  type BuyTradeType,
+} from 'src/predict/buy-trade-type';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -80,6 +85,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private positions: Position[] = [];
   private buyPositionConfigsByKey = new Map<string, BuyPositionConfig>();
   private sellPositionConfigsByKey = new Map<string, SellPositionConfig>();
+  private sportsBets: Array<{ id: number; keyword: string; category: string }> =
+    [];
   private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
   private readonly subscribedOrderbooks = new Set<number>();
   private readonly subscribedPriceFeeds = new Set<number>();
@@ -138,6 +145,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.initializeBuyPositionConfigs();
     this.logger.log('Loading sell position configs...');
     await this.initializeSellPositionConfigs();
+    this.logger.log('Loading sports bets...');
+    await this.initializeSportsBets();
     await this.initializeCategoryTable();
     this.logger.log('Checking for positions...');
     await this.initializePositionTable();
@@ -412,6 +421,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  private async initializeSportsBets() {
+    this.sportsBets = await this.predictRepository.getAllSportsBets();
+  }
+
   /* ****************************************************
    * Refresh Functions
    **************************************************** */
@@ -513,7 +526,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           const batchResults = await Promise.all(
             batch.map(async (market) => {
               const createdAt = formatCreatedAt(market.createdAt);
-              const timeLeftMessage = getMarketTimeLeftMessage(market);
+              const timeLeftMessage = getMarketTimeLeftMessage(market, {
+                categoryEndsAt: category.endsAt,
+                preferCategoryEndsAt:
+                  category.marketVariant === MarketVariant.SPORTS_MATCH,
+              });
               if (timeLeftMessage) {
                 this.logger.log(timeLeftMessage);
               }
@@ -729,6 +746,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           getTradeAmountForMarketSlug: this.getTradeAmountForMarketSlug.bind(this),
           getEntrySecondsForMarketSlug:
             this.getEntrySecondsForMarketSlug.bind(this),
+          getBuyTradeTypeForMarketSlug:
+            this.getBuyTradeTypeForMarketSlug.bind(this),
           orderBuilder: this.orderBuilder!,
           signer: this.signer!,
           getOrderBookByMarketId: this.getOrderBookByMarketId.bind(this),
@@ -1095,6 +1114,23 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  private resolveSupportedSlugKeyword(slug: string): string | null {
+    for (const keyword of SUPPORTED_SLUG_KEYWORDS) {
+      if (keyword.kind === 'suffix' && slug.endsWith(keyword.value)) {
+        return keyword.value;
+      }
+      if (keyword.kind === 'prefix') {
+        const prefix = keyword.value.endsWith('-')
+          ? keyword.value
+          : `${keyword.value}-`;
+        if (slug.startsWith(prefix)) {
+          return keyword.value;
+        }
+      }
+    }
+    return null;
+  }
+
   private getTradeAmountForMarketSlug(slug: string): number {
     const category = this.categories.find((item) => item.slug === slug);
     if (!category) {
@@ -1104,19 +1140,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return 1;
     }
 
-    // Trade for prediction markets with expected suffix
-    if (!slug.includes(EXPECTED_SUFFIX)) {
+    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    if (!supportedKeyword) {
       this.logger.warn(
-        `Trade amount fallback to default (1). No ${EXPECTED_SUFFIX} suffix found for slug ${slug}.`,
+        `Trade amount fallback to default (1). No supported keyword found for slug ${slug}.`,
       );
       return 1;
     }
     const buyConfig = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(EXPECTED_SUFFIX),
+      buildBuyConfigKey(supportedKeyword),
     );
     if (!buyConfig) {
       this.logger.warn(
-        `Trade amount fallback to default (1). No buy position config for marketVariant ${category.marketVariant}. Slug: ${slug}. Category: ${category.slug}.`,
+        `Trade amount fallback to default (1). No buy position config for keyword ${supportedKeyword}. Slug: ${slug}. Category: ${category.slug}.`,
       );
       return 1;
     }
@@ -1130,39 +1166,87 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getEntrySecondsForMarketSlug(slug: string): number | null {
-    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
-    if (!hasExpectedSuffix) {
+    const category = this.categories.find((item) => item.slug === slug);
+    if (!category) {
       this.logger.warn(
-        `Entry check skipped. No expected suffix found for slug ${slug}.`,
+        `Entry check skipped. Category not found for slug ${slug}.`,
+      );
+      return null;
+    }
+    if (
+      category.marketVariant === MarketVariant.SPORTS_MATCH &&
+      !this.hasSportsBetKeywordForSlug(slug)
+    ) {
+      this.logger.warn(
+        `Entry check skipped. No sports bet keyword matched for slug ${slug}.`,
+      );
+      return null;
+    }
+    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    if (!supportedKeyword) {
+      this.logger.warn(
+        `Entry check skipped. No supported keyword found for slug ${slug}.`,
       );
       return null;
     }
     const buyConfig = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(EXPECTED_SUFFIX),
+      buildBuyConfigKey(supportedKeyword),
     );
     if (!buyConfig) {
       this.logger.warn(
-        `Entry check skipped. No buy position config for slug ${slug}.`,
+        `Entry check skipped. No buy position config for keyword ${supportedKeyword}. Slug: ${slug}.`,
       );
       return null;
     }
     return buyConfig.entry;
   }
 
+  private getBuyTradeTypeForMarketSlug(slug: string): BuyTradeType {
+    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    if (!supportedKeyword) {
+      return DEFAULT_BUY_TRADE_TYPE;
+    }
+    const buyConfig = this.buyPositionConfigsByKey.get(
+      buildBuyConfigKey(supportedKeyword),
+    );
+    return normalizeBuyTradeType(buyConfig?.tradeType);
+  }
+
+  private hasSportsBetKeywordForSlug(slug: string): boolean {
+    if (this.sportsBets.length === 0) {
+      return false;
+    }
+    const normalizedSlug = slug.toLowerCase();
+    return this.sportsBets.some((bet) => {
+      const category = bet.category.trim().toLowerCase();
+      const keyword = bet.keyword.trim().toLowerCase();
+      if (!category || !keyword) {
+        return false;
+      }
+      const categoryPrefix = category.endsWith('-')
+        ? category
+        : `${category}-`;
+      return (
+        normalizedSlug.startsWith(categoryPrefix) &&
+        normalizedSlug.includes(keyword)
+      );
+    });
+  }
+
   private getStopLossPercentageForMarketSlug(slug: string): number | null {
-    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
-    if (!hasExpectedSuffix) {
+    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    if (!supportedKeyword) {
       this.logger.warn(
-        `Stop-loss check skipped. No expected suffix found for slug ${slug}.`,
+        `Stop-loss check skipped. No supported keyword found for slug ${slug}.`,
       );
       return null;
     }
     const sellConfig = this.sellPositionConfigsByKey.get(
-      buildBuyConfigKey(EXPECTED_SUFFIX),
+      buildBuyConfigKey(supportedKeyword),
     );
     if (!sellConfig) {
       this.logger.warn(
-        `Stop-loss check skipped. No sell position config for slug ${slug}.`,
+        `Stop-loss check skipped. No sell position config for keyword ${supportedKeyword}. Slug: ${slug}.`,
       );
       return null;
     }
@@ -1170,19 +1254,19 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getAmountPercentageForMarketSlug(slug: string): number | null {
-    const hasExpectedSuffix = slug.includes(EXPECTED_SUFFIX);
-    if (!hasExpectedSuffix) {
+    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    if (!supportedKeyword) {
       this.logger.warn(
-        `Amount percentage check skipped. No expected suffix found for slug ${slug}.`,
+        `Amount percentage check skipped. No supported keyword found for slug ${slug}.`,
       );
       return null;
     }
     const sellConfig = this.sellPositionConfigsByKey.get(
-      buildBuyConfigKey(EXPECTED_SUFFIX),
+      buildBuyConfigKey(supportedKeyword),
     );
     if (!sellConfig) {
       this.logger.warn(
-        `Amount percentage check skipped. No sell position config for slug ${slug}.`,
+        `Amount percentage check skipped. No sell position config for keyword ${supportedKeyword}. Slug: ${slug}.`,
       );
       return null;
     }

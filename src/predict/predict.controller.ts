@@ -5,12 +5,10 @@ import {
   NotFoundException,
   Param,
   Patch,
-  ParseEnumPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { PredictService } from 'src/predict/predict.service';
-import { MarketVariant } from 'lib/zenstack/models';
 import {
   CreateBuyPositionConfigBody,
   CreateSellPositionConfigBody,
@@ -18,6 +16,7 @@ import {
   UpdateSellPositionConfigBody,
 } from 'src/dto/trade-config.dto';
 import { AuthGuard } from 'src/common/guard/auth.guard';
+import { normalizeMarketVariant } from 'src/predict/predict.market-variant';
 
 @Controller('predict')
 export class PredictController {
@@ -25,18 +24,18 @@ export class PredictController {
 
   @Get('buy-position-config/:marketVariant/:slugWithSuffix')
   async getBuyPositionConfigByMarketVariant(
-    @Param('marketVariant', new ParseEnumPipe(MarketVariant))
-    marketVariant: MarketVariant,
+    @Param('marketVariant') marketVariant: string,
     @Param('slugWithSuffix') slugWithSuffix: string,
   ) {
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     const buyConfig =
       await this.predictService.getBuyPositionConfigByMarketVariant(
-        marketVariant,
+        normalizedVariant,
         slugWithSuffix,
       );
     if (!buyConfig) {
       throw new NotFoundException(
-        `Buy position config not found for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
+        `Buy position config not found for marketVariant: ${normalizedVariant}, slugWithSuffix: ${slugWithSuffix}`,
       );
     }
     return buyConfig;
@@ -45,25 +44,27 @@ export class PredictController {
   @Post('buy-position-config')
   @UseGuards(AuthGuard)
   async createBuyPositionConfig(@Body() body: CreateBuyPositionConfigBody) {
-    const { marketVariant, slugWithSuffix, amount, entry } = body;
+    const { marketVariant, slugWithSuffix, amount, entry, tradeType } = body;
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     return this.predictService.createBuyPositionConfig(
-      marketVariant,
+      normalizedVariant,
       slugWithSuffix,
       amount,
       entry,
+      tradeType,
     );
   }
 
   @Patch('buy-position-config/:marketVariant/:slugWithSuffix')
   @UseGuards(AuthGuard)
   async updateBuyPositionConfig(
-    @Param('marketVariant', new ParseEnumPipe(MarketVariant))
-    marketVariant: MarketVariant,
+    @Param('marketVariant') marketVariant: string,
     @Param('slugWithSuffix') slugWithSuffix: string,
     @Body() body: UpdateBuyPositionConfigBody,
   ) {
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     return this.predictService.updateBuyPositionConfig(
-      marketVariant,
+      normalizedVariant,
       slugWithSuffix,
       body,
     );
@@ -71,18 +72,18 @@ export class PredictController {
 
   @Get('sell-position-config/:marketVariant/:slugWithSuffix')
   async getSellPositionConfigByMarketVariant(
-    @Param('marketVariant', new ParseEnumPipe(MarketVariant))
-    marketVariant: MarketVariant,
+    @Param('marketVariant') marketVariant: string,
     @Param('slugWithSuffix') slugWithSuffix: string,
   ) {
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     const sellConfig =
       await this.predictService.getSellPositionConfigByMarketVariant(
-        marketVariant,
+        normalizedVariant,
         slugWithSuffix,
       );
     if (!sellConfig) {
       throw new NotFoundException(
-        `Sell position config not found for marketVariant: ${marketVariant}, slugWithSuffix: ${slugWithSuffix}`,
+        `Sell position config not found for marketVariant: ${normalizedVariant}, slugWithSuffix: ${slugWithSuffix}`,
       );
     }
     return sellConfig;
@@ -97,8 +98,9 @@ export class PredictController {
       stopLossPercentage,
       amountPercentage,
     } = body;
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     return this.predictService.createSellPositionConfig(
-      marketVariant,
+      normalizedVariant,
       slugWithSuffix,
       stopLossPercentage,
       amountPercentage,
@@ -108,13 +110,13 @@ export class PredictController {
   @Patch('sell-position-config/:marketVariant/:slugWithSuffix')
   @UseGuards(AuthGuard)
   async updateSellPositionConfig(
-    @Param('marketVariant', new ParseEnumPipe(MarketVariant))
-    marketVariant: MarketVariant,
+    @Param('marketVariant') marketVariant: string,
     @Param('slugWithSuffix') slugWithSuffix: string,
     @Body() body: UpdateSellPositionConfigBody,
   ) {
+    const normalizedVariant = normalizeMarketVariant(marketVariant);
     return this.predictService.updateSellPositionConfig(
-      marketVariant,
+      normalizedVariant,
       slugWithSuffix,
       body,
     );

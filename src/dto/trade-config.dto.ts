@@ -1,9 +1,12 @@
-import { IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import { MarketVariant } from 'lib/zenstack/models';
+import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { API_MARKET_VARIANTS } from 'src/predict/predict.market-variant';
+import type { ApiMarketVariant } from 'src/predict/predict.market-variant';
+import { BUY_TRADE_TYPES } from 'src/predict/buy-trade-type';
+import type { BuyTradeType } from 'src/predict/buy-trade-type';
 
 class CreateBuyPositionConfigBody {
-  @IsEnum(MarketVariant)
-  marketVariant: MarketVariant;
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant: ApiMarketVariant;
 
   @IsString()
   slugWithSuffix: string;
@@ -15,6 +18,10 @@ class CreateBuyPositionConfigBody {
   @IsInt()
   @Min(1)
   entry: number;
+
+  @IsOptional()
+  @IsIn(BUY_TRADE_TYPES)
+  tradeType?: BuyTradeType;
 }
 
 class UpdateBuyPositionConfigBody {
@@ -27,11 +34,15 @@ class UpdateBuyPositionConfigBody {
   @IsInt()
   @Min(1)
   entry?: number;
+
+  @IsOptional()
+  @IsIn(BUY_TRADE_TYPES)
+  tradeType?: BuyTradeType;
 }
 
 class CreateSellPositionConfigBody {
-  @IsEnum(MarketVariant)
-  marketVariant: MarketVariant;
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant: ApiMarketVariant;
 
   @IsString()
   slugWithSuffix: string;

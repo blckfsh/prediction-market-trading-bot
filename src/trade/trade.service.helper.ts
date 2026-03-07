@@ -2,6 +2,13 @@ import { ConfigService } from '@nestjs/config';
 import { parseEther, WeiPerEther } from 'ethers';
 import { AUTO_TRADE_INTERVAL_MS } from 'src/common/helpers/constants';
 import { Position } from 'src/types/market.types';
+import type { BuyTradeType } from 'src/predict/buy-trade-type';
+
+type TradeEntry = {
+  status: string;
+  buyAmountInUsd: number | string | { toString(): string };
+  buyTimestamp: Date | string;
+};
 
 export function getDateKey(date: Date): string {
   const year = date.getFullYear();
@@ -107,6 +114,19 @@ export function isWebsocketAutoTradeEnabled(
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
+export function getChosenOutcomeIndexByTradeType(
+  tradeType: BuyTradeType,
+): 0 | 1 {
+  switch (tradeType) {
+    case 'yes':
+    case 'greater-than-no':
+      return 0;
+    case 'no':
+    case 'less-than-no':
+      return 1;
+  }
+}
+
 function getMarketDurationMs(market: {
   boostStartsAt?: string | null;
   boostEndsAt?: string | null;
@@ -188,11 +208,7 @@ export function recordDailyRealizedPnl(params: {
 export async function getUnrealizedPnlUsdForToday(params: {
   positions: Position[];
   todayKey: string;
-  getTradeByMarketId: (marketId: number) => Promise<{
-    status: string;
-    amount: number;
-    timestamp: Date | string;
-  } | null>;
+  getTradeByMarketId: (marketId: number) => Promise<TradeEntry | null>;
 }): Promise<number> {
   const { positions, todayKey, getTradeByMarketId } = params;
   if (positions.length === 0) {
@@ -204,11 +220,11 @@ export async function getUnrealizedPnlUsdForToday(params: {
       if (!trade || trade.status === 'SOLD') {
         return 0;
       }
-      const tradeDateKey = getDateKey(new Date(trade.timestamp));
+      const tradeDateKey = getDateKey(new Date(trade.buyTimestamp));
       if (tradeDateKey !== todayKey) {
         return 0;
       }
-      const entryValueUsd = Number(trade.amount);
+      const entryValueUsd = Number(trade.buyAmountInUsd);
       const currentValueUsd = Number(position.valueUsd);
       if (!Number.isFinite(entryValueUsd) || !Number.isFinite(currentValueUsd)) {
         return 0;
@@ -227,18 +243,10 @@ export async function shouldHaltTradingForDay(params: {
     params: {
       positions: Position[];
       todayKey: string;
-      getTradeByMarketId: (marketId: number) => Promise<{
-        status: string;
-        amount: number;
-        timestamp: Date | string;
-      } | null>;
+      getTradeByMarketId: (marketId: number) => Promise<TradeEntry | null>;
     },
   ) => Promise<number>;
-  getTradeByMarketId?: (marketId: number) => Promise<{
-    status: string;
-    amount: number;
-    timestamp: Date | string;
-  } | null>;
+  getTradeByMarketId?: (marketId: number) => Promise<TradeEntry | null>;
 }): Promise<{
   shouldHalt: boolean;
   reason?: 'profit' | 'loss';

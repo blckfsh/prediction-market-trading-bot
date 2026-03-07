@@ -17,6 +17,7 @@ describe('PredictService', () => {
     slugWithSuffix: 'crypto-up-down-1',
     amount: 100,
     entry: 25,
+    tradeType: 'greater-than-no',
   };
 
   const sellConfig = {
@@ -77,6 +78,7 @@ describe('PredictService', () => {
         'crypto-up-down-1',
         100,
         25,
+        'yes',
       ),
     ).resolves.toEqual(buyConfig);
 
@@ -85,6 +87,7 @@ describe('PredictService', () => {
       'crypto-up-down-1',
       100,
       25,
+      'yes',
     );
   });
 
@@ -96,13 +99,14 @@ describe('PredictService', () => {
       service.updateBuyPositionConfig(MarketVariant.DEFAULT, 'crypto-up-down-1', {
         amount: 250,
         entry: 30,
+        tradeType: 'no',
       }),
     ).resolves.toEqual(updatedConfig);
 
     expect(predictRepository.updateBuyPositionConfig).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
       'crypto-up-down-1',
-      { amount: 250, entry: 30 },
+      { amount: 250, entry: 30, tradeType: 'no' },
     );
   });
 

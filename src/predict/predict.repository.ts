@@ -8,6 +8,14 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { SaveMarketTradeInput } from 'src/types/market.types';
 import { MarketVariant } from 'lib/zenstack/models';
 import { TradeStatus } from 'generated/prisma/client';
+import type { BuyTradeType } from 'src/predict/buy-trade-type';
+import { normalizeBuyTradeType } from 'src/predict/buy-trade-type';
+
+type SportsBetRecord = {
+  id: number;
+  keyword: string;
+  category: string;
+};
 
 @Injectable()
 export class PredictRepository {
@@ -51,21 +59,29 @@ export class PredictRepository {
     return this.prisma.sellPositionConfig.findMany();
   }
 
+  async getAllSportsBets(): Promise<SportsBetRecord[]> {
+    return this.prisma.$queryRawUnsafe<SportsBetRecord[]>(
+      'SELECT id, keyword, category FROM "SportsBet"',
+    );
+  }
+
   async saveMarketTrade({
     marketId,
     slug,
-    amount,
+    buyAmount,
+    buyAmountInUsd,
     buyOrderHash,
-    timestamp,
+    buyTimestamp,
     status,
   }: SaveMarketTradeInput) {
     return this.prisma.trade.create({
       data: {
         marketId,
         slug,
-        amount,
+        buyAmount,
+        buyAmountInUsd,
         buyOrderHash: buyOrderHash ?? ZeroHash.toString(),
-        timestamp,
+        buyTimestamp,
         status,
       },
     });
@@ -81,7 +97,7 @@ export class PredictRepository {
       data: {
         status,
         sellOrderHash: sellOrderHash ?? ZeroHash.toString(),
-        timestamp: new Date(),
+        sellTimestamp: new Date(),
       },
     });
   }
@@ -100,6 +116,7 @@ export class PredictRepository {
     slugWithSuffix: string,
     amount: number,
     entry: number,
+    tradeType?: BuyTradeType,
   ) {
     const buyConfig = await this.getBuyPositionConfigByMarketVariant(
       marketVariant,
@@ -116,6 +133,7 @@ export class PredictRepository {
         slugWithSuffix,
         amount,
         entry,
+        tradeType: normalizeBuyTradeType(tradeType),
       },
     });
   }
@@ -126,6 +144,7 @@ export class PredictRepository {
     updates: {
       amount?: number;
       entry?: number;
+      tradeType?: BuyTradeType;
     },
   ) {
     const buyConfig = await this.getBuyPositionConfigByMarketVariant(
@@ -139,7 +158,12 @@ export class PredictRepository {
     }
     return this.prisma.buyPositionConfig.update({
       where: { id: buyConfig.id },
-      data: updates,
+      data: {
+        ...updates,
+        ...(updates.tradeType !== undefined
+          ? { tradeType: normalizeBuyTradeType(updates.tradeType) }
+          : {}),
+      },
     });
   }
 

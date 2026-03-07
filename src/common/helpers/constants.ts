@@ -8,13 +8,21 @@ const REFERRAL_CODE = 99076;
 
 const MIN_PROFIT_USD = 0.1;
 
-const EXPECTED_SUFFIX = "15-minutes";
+type SupportedSlugKeyword = {
+  kind: 'prefix' | 'suffix';
+  value: string;
+};
 
-export { 
-    CATEGORY_REFRESH_INTERVAL_MS, 
-    AUTO_TRADE_INTERVAL_MS, 
-    SLIPPAGE_BPS, 
-    REFERRAL_CODE, 
-    MIN_PROFIT_USD, 
-    EXPECTED_SUFFIX 
+const SUPPORTED_SLUG_KEYWORDS: SupportedSlugKeyword[] = [
+  { kind: 'suffix', value: '15-minutes' },
+  { kind: 'prefix', value: 'lol' },
+];
+
+export {
+  CATEGORY_REFRESH_INTERVAL_MS,
+  AUTO_TRADE_INTERVAL_MS,
+  SLIPPAGE_BPS,
+  REFERRAL_CODE,
+  MIN_PROFIT_USD,
+  SUPPORTED_SLUG_KEYWORDS,
 };
