@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { Category } from 'src/types/market.types';
+import { Category, MarketVariant } from 'src/types/market.types';
 import { parseBooleanFlag } from 'src/common/utils/boolean';
 import {
   Channel,
@@ -29,14 +29,19 @@ function isWebsocketEnabled(configService: ConfigService): boolean {
   return parseBooleanFlag(configService.get<string>('PREDICT_WS_ENABLED'));
 }
 
-function filterAndSortCryptoUpDownCategories(
-  categories: Category[],
-): Category[] {
-  return categories.sort((a, b) => {
-    const dateA = new Date(a.startsAt).getTime();
-    const dateB = new Date(b.startsAt).getTime();
-    return dateB - dateA; // Descending order (newest first)
-  });
+const SUPPORTED_CATEGORY_VARIANTS = new Set<MarketVariant>([
+  MarketVariant.SPORTS_TEAM_MATCH,
+  MarketVariant.CRYPTO_UP_DOWN,
+]);
+
+function filterAndSortSupportedCategories(categories: Category[]): Category[] {
+  return categories
+    .filter((category) => SUPPORTED_CATEGORY_VARIANTS.has(category.marketVariant))
+    .sort((a, b) => {
+      const dateA = new Date(a.startsAt).getTime();
+      const dateB = new Date(b.startsAt).getTime();
+      return dateB - dateA; // Descending order (newest first)
+    });
 }
 
 async function refreshCategoriesAndSubscribe(
@@ -256,7 +261,7 @@ export {
   getCategoryRefreshIntervalMs,
   isBotEnabled,
   isWebsocketEnabled,
-  filterAndSortCryptoUpDownCategories,
+  filterAndSortSupportedCategories,
   refreshCategoriesAndSubscribe,
   startCategoryRefreshLoop,
   startPositionsRefreshLoop,

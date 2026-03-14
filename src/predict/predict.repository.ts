@@ -24,6 +24,17 @@ export class PredictRepository {
   async getTradeByMarketId(marketId: number) {
     return this.prisma.trade.findFirst({
       where: { marketId },
+      orderBy: { buyTimestamp: 'desc' },
+    });
+  }
+
+  async getActiveTradeByMarketId(marketId: number) {
+    return this.prisma.trade.findFirst({
+      where: {
+        marketId,
+        status: { not: TradeStatus.SOLD },
+      },
+      orderBy: { buyTimestamp: 'desc' },
     });
   }
 
@@ -135,7 +146,9 @@ export class PredictRepository {
         entry,
         tradeType: normalizeBuyTradeType(tradeType, {
           defaultType:
-            marketVariant === MarketVariant.SPORTS_MATCH ? 'na' : 'avg-price',
+            marketVariant === MarketVariant.SPORTS_TEAM_MATCH
+              ? 'na'
+              : 'avg-price',
         }),
       },
     });

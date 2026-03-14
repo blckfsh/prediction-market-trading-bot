@@ -15,6 +15,7 @@ type SupportedSlugKeyword = {
 
 const SUPPORTED_SLUG_KEYWORDS: SupportedSlugKeyword[] = [
   { kind: 'suffix', value: '15-minutes' },
+  { kind: 'suffix', value: 'daily' },
   { kind: 'prefix', value: 'lol' },
 ];
 

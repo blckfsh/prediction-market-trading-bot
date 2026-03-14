@@ -90,7 +90,7 @@ interface GetAllPositionsResponse {
 
 enum MarketVariant {
   DEFAULT = 'DEFAULT',
-  SPORTS_MATCH = 'SPORTS_MATCH',
+  SPORTS_TEAM_MATCH = 'SPORTS_TEAM_MATCH',
   CRYPTO_UP_DOWN = 'CRYPTO_UP_DOWN',
 }
 
@@ -106,6 +106,7 @@ enum OrderStrategy {
 
 interface Tag {
   id: string;
+  level?: number | null;
   name: string;
 }
 
@@ -130,6 +131,11 @@ interface GetCategoriesByResponse {
   success: boolean;
   cursor: string;
   data: Category[];
+}
+
+interface GetTagsResponse {
+  success: boolean;
+  data: Tag[];
 }
 
 interface MarketStatistics {
@@ -233,6 +239,7 @@ export type {
   Tag,
   Category,
   GetCategoriesByResponse,
+  GetTagsResponse,
   MarketStatistics,
   GetMarketStatisticsResponse,
   OrderBookData,

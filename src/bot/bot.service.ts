@@ -30,9 +30,11 @@ import {
   GetAllMarketsResponse,
   GetAllPositionsResponse,
   GetCategoriesByResponse,
+  GetTagsResponse,
   GetMarketStatisticsResponse,
   GetOrderBookResponse,
   MarketDataResponse,
+  Tag,
 } from 'src/types/market.types';
 import {
   AuthMessageResponse,
@@ -44,7 +46,7 @@ import {
   getTopicLabel as getTopicLabelHelper,
   isBotEnabled,
   isWebsocketEnabled,
-  filterAndSortCryptoUpDownCategories,
+  filterAndSortSupportedCategories,
   refreshPositionsTable as refreshPositionsTableHelper,
   refreshCategoriesAndSubscribe as refreshCategoriesAndSubscribeHelper,
   startCategoryRefreshLoop as startCategoryRefreshLoopHelper,
@@ -69,6 +71,11 @@ import {
   normalizeBuyTradeType,
   type BuyTradeType,
 } from 'src/predict/buy-trade-type';
+
+const CATEGORY_FETCH_FIRST = 100;
+const CATEGORY_FETCH_SORT = 'VOLUME_24H_DESC';
+const LOL_TAG_NAME = 'LoL';
+const CRYPTO_TAG_NAME = 'Crypto';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -224,7 +231,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private async initializeCategories() {
     const categories = await this.getDefaultMarkets();
-    this.categories = filterAndSortCryptoUpDownCategories(categories.data);
+    this.categories = filterAndSortSupportedCategories(categories.data);
   }
 
   private async initializeCategoryTable() {
@@ -439,7 +446,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         },
       },
       () => this.getDefaultMarkets(),
-      (data) => filterAndSortCryptoUpDownCategories(data),
+      (data) => filterAndSortSupportedCategories(data),
       (marketId) => this.subscribeToOrderbook(marketId),
       async () => {
         this.logger.log(
@@ -529,7 +536,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
               const timeLeftMessage = getMarketTimeLeftMessage(market, {
                 categoryEndsAt: category.endsAt,
                 preferCategoryEndsAt:
-                  category.marketVariant === MarketVariant.SPORTS_MATCH,
+                  category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH,
               });
               if (timeLeftMessage) {
                 this.logger.log(timeLeftMessage);
@@ -919,27 +926,39 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     let categories: Category[] = [];
 
     try {
-      const headers = new Headers();
-      headers.append('x-api-key', this.apiKey!);
+      const tags = await this.getAllTags();
+      const lolTagId = this.getTagIdByName(tags, LOL_TAG_NAME);
+      const cryptoTagId = this.getTagIdByName(tags, CRYPTO_TAG_NAME);
 
-      const requestOptions = {
-        method: 'GET',
-        headers: headers,
-        redirect: 'follow',
-      };
+      const [sportsTeamCategories, cryptoCategories] = await Promise.all([
+        this.getCategoriesByFilters({
+          marketVariant: MarketVariant.SPORTS_TEAM_MATCH,
+          tagIds: lolTagId ? [lolTagId] : undefined,
+        }),
+        this.getCategoriesByFilters({
+          marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+          tagIds: cryptoTagId ? [cryptoTagId] : undefined,
+        }),
+      ]);
 
-      const response = await fetch(
-        `${this.baseUrl!}/categories?status=OPEN`,
-        requestOptions as RequestInit,
+      const filteredSportsTeamCategories = sportsTeamCategories.filter(
+        (category) =>
+          category.slug.startsWith('lol-') ||
+          (lolTagId !== null && this.categoryHasTagId(category, lolTagId)),
       );
-      if (!response.ok) {
-        throw new Error(
-          `Failed to get categories: HTTP ${response.status} ${response.statusText}`,
-        );
-      }
-
-      data = (await response.json()) as GetCategoriesByResponse;
-      categories = data.data;
+      const combinedCategories = [
+        ...filteredSportsTeamCategories,
+        ...cryptoCategories,
+      ];
+      const dedupedCategories = Array.from(
+        new Map(combinedCategories.map((category) => [category.id, category])).values(),
+      );
+      data = {
+        success: true,
+        cursor: '',
+        data: dedupedCategories,
+      };
+      categories = dedupedCategories;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to fetch categories: ${error.message}`);
@@ -950,6 +969,101 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     }
 
     return data;
+  }
+
+  private async getAllTags(): Promise<Tag[]> {
+    let data: GetTagsResponse | null = null;
+    try {
+      const headers = new Headers();
+      headers.append('x-api-key', this.apiKey!);
+      const requestOptions = {
+        method: 'GET',
+        headers,
+        redirect: 'follow',
+      };
+      const response = await fetch(
+        `${this.baseUrl!}/tags`,
+        requestOptions as RequestInit,
+      );
+      if (!response.ok) {
+        throw new Error(
+          `Failed to get tags: HTTP ${response.status} ${response.statusText}`,
+        );
+      }
+      data = (await response.json()) as GetTagsResponse;
+      return data.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(`Failed to fetch tags: ${error.message}`);
+      }
+      throw new Error('Failed to fetch tags: Unknown error');
+    }
+  }
+
+  private async getCategoriesByFilters(params: {
+    marketVariant: MarketVariant;
+    tagIds?: string[];
+  }): Promise<Category[]> {
+    const categories: Category[] = [];
+    let after: string | null = null;
+    let previousCursor: string | null = null;
+
+    do {
+      const response = await this.fetchCategoriesPage({
+        marketVariant: params.marketVariant,
+        tagIds: params.tagIds,
+        after,
+      });
+      categories.push(...response.data);
+      previousCursor = after;
+      after = response.cursor?.trim() ? response.cursor : null;
+    } while (after && after !== previousCursor);
+
+    return categories;
+  }
+
+  private async fetchCategoriesPage(params: {
+    marketVariant: MarketVariant;
+    tagIds?: string[];
+    after?: string | null;
+  }): Promise<GetCategoriesByResponse> {
+    const headers = new Headers();
+    headers.append('x-api-key', this.apiKey!);
+    const requestOptions = {
+      method: 'GET',
+      headers,
+      redirect: 'follow',
+    };
+    const url = new URL(`${this.baseUrl!}/categories`);
+    url.searchParams.set('status', 'OPEN');
+    url.searchParams.set('sort', CATEGORY_FETCH_SORT);
+    url.searchParams.set('marketVariant', params.marketVariant);
+    url.searchParams.set('first', String(CATEGORY_FETCH_FIRST));
+    if (params.after) {
+      url.searchParams.set('after', params.after);
+    }
+    if (params.tagIds && params.tagIds.length > 0) {
+      url.searchParams.set('tagIds', JSON.stringify(params.tagIds.map(Number)));
+    }
+
+    const response = await fetch(url.toString(), requestOptions as RequestInit);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to get categories page: HTTP ${response.status} ${response.statusText}`,
+      );
+    }
+    return (await response.json()) as GetCategoriesByResponse;
+  }
+
+  private getTagIdByName(tags: Tag[], targetName: string): string | null {
+    const match = tags.find(
+      (tag) => tag.name.trim().toLowerCase() === targetName.toLowerCase(),
+    );
+    return match ? match.id : null;
+  }
+
+  private categoryHasTagId(category: Category, tagId: string): boolean {
+    return category.tags.some((tag) => tag.id === tagId);
   }
 
   private async getUSDTBalance(): Promise<BalanceResponse> {
@@ -1176,7 +1290,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     if (
-      category.marketVariant === MarketVariant.SPORTS_MATCH &&
+      category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH &&
       !this.hasSportsBetKeywordForSlug(slug)
     ) {
       this.logger.warn(
@@ -1209,7 +1323,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     const buyConfig = supportedKeyword
       ? this.buyPositionConfigsByKey.get(buildBuyConfigKey(supportedKeyword))
       : undefined;
-    if (category?.marketVariant === MarketVariant.SPORTS_MATCH) {
+    if (category?.marketVariant === MarketVariant.SPORTS_TEAM_MATCH) {
       return normalizeBuyTradeType(buyConfig?.tradeType, {
         defaultType: 'na',
       });

@@ -19,6 +19,7 @@ import { getComplement, normalizeDepth } from 'src/common/utils/orderbook';
 import { MIN_PROFIT_USD } from 'src/common/helpers/constants';
 import {
   getAutoTradeIntervalMs as getAutoTradeIntervalMsHelper,
+  getCreateOrderErrorMessage as getCreateOrderErrorMessageHelper,
   getChosenOutcomeIndexByTradeType,
   getMarketTimeLeftSeconds as getMarketTimeLeftSecondsHelper,
   isWebsocketAutoTradeEnabled as isWebsocketAutoTradeEnabledHelper,
@@ -318,13 +319,13 @@ export class TradeService {
     createOrderBody: CreateOrderBody;
   }): Promise<CreateOrderResponse> {
     const { baseUrl, apiKey, token, createOrderBody } = params;
-    let data: CreateOrderResponse | null = null;
     let createOrderResponse: CreateOrderResponse | null = null;
 
     try {
       const headers = new Headers();
       headers.append('x-api-key', apiKey);
       headers.append('Authorization', `Bearer ${token}`);
+      headers.append('Content-Type', 'application/json');
 
       const requestOptions = {
         method: 'POST',
@@ -337,20 +338,49 @@ export class TradeService {
         `${baseUrl}/orders`,
         requestOptions as RequestInit,
       );
-      data = (await response.json()) as CreateOrderResponse;
-      createOrderResponse = data;
+      const rawResponse = (await response.json()) as unknown;
+      const responseRecord =
+        rawResponse !== null && typeof rawResponse === 'object'
+          ? (rawResponse as Record<string, unknown>)
+          : {};
+      const success = responseRecord.success === true;
+      const responseData = success
+        ? (responseRecord.data as CreateOrderResponse['data'])
+        : undefined;
+      const responseError = !success
+        ? {
+            _tag:
+              typeof responseRecord._tag === 'string'
+                ? responseRecord._tag
+                : `HTTP_${response.status}`,
+            message:
+              typeof responseRecord.message === 'string'
+                ? responseRecord.message
+                : typeof responseRecord.error === 'string'
+                  ? responseRecord.error
+                  : `HTTP ${response.status} ${response.statusText}`,
+          }
+        : undefined;
+      createOrderResponse = {
+        success,
+        data: responseData,
+        error: responseError,
+      };
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to create order: ${error.message}`);
       }
       throw new Error('Failed to create order: Unknown error');
     } finally {
-      this.logger.log(
-        `Order created, id: ${createOrderResponse?.data?.orderId ?? 'N/A'}`,
-      );
+      if (createOrderResponse?.success && createOrderResponse.data?.orderId) {
+        this.logger.log(`Order created, id: ${createOrderResponse.data.orderId}`);
+      }
     }
 
-    return data;
+    if (!createOrderResponse) {
+      throw new Error('Failed to create order: Empty response');
+    }
+    return createOrderResponse;
   }
 
   async createTradeFromOrderbook(params: {
@@ -497,9 +527,12 @@ export class TradeService {
         : null);
     const { marketId } = market;
     const { data: book } = await getOrderBookByMarketId(marketId);
-    const trade = await this.predictRepository.getTradeByMarketId(marketId);
-    if (trade) {
-      this.logger.warn(`Trade already exists. Market ID: ${marketId}`);
+    const activeTrade =
+      await this.predictRepository.getActiveTradeByMarketId(marketId);
+    if (activeTrade) {
+      this.logger.warn(
+        `Active trade already exists. Market ID: ${marketId}, Trade ID: ${activeTrade.id}, Status: ${activeTrade.status}.`,
+      );
       return;
     }
 
@@ -693,7 +726,7 @@ export class TradeService {
     const createOrderResponse = await createOrderFn(createOrderBody);
     if (!createOrderResponse.success) {
       this.logger.warn(
-        `Failed to create order: ${createOrderResponse.error!._tag}`,
+        `Failed to create order: ${getCreateOrderErrorMessageHelper(createOrderResponse)}`,
       );
       return;
     }
@@ -819,7 +852,7 @@ export class TradeService {
     const createOrderResponse = await createOrder(createOrderBody);
     if (!createOrderResponse.success) {
       this.logger.warn(
-        `Failed to create order: ${createOrderResponse.error!._tag}`,
+        `Failed to create order: ${getCreateOrderErrorMessageHelper(createOrderResponse)}`,
       );
       return;
     }

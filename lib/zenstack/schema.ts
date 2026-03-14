@@ -108,7 +108,9 @@ export class SchemaType implements SchemaDef {
                 },
                 tradeType: {
                     name: "tradeType",
-                    type: "String"
+                    type: "String",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal("greater-than-no") }] }],
+                    default: "greater-than-no"
                 }
             },
             idFields: ["id"],
@@ -213,7 +215,7 @@ export class SchemaType implements SchemaDef {
         MarketVariant: {
             values: {
                 DEFAULT: "DEFAULT",
-                SPORTS_MATCH: "SPORTS_MATCH",
+                SPORTS_TEAM_MATCH: "SPORTS_TEAM_MATCH",
                 CRYPTO_UP_DOWN: "CRYPTO_UP_DOWN"
             }
         }
