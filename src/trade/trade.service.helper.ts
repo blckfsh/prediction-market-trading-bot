@@ -1,7 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { parseEther, WeiPerEther } from 'ethers';
 import { AUTO_TRADE_INTERVAL_MS } from 'src/common/helpers/constants';
-import { Position } from 'src/types/market.types';
+import { CreateOrderResponse, Position } from 'src/types/market.types';
 import type { BuyTradeType } from 'src/predict/buy-trade-type';
 
 type TradeEntry = {
@@ -26,6 +26,39 @@ export function getAutoTradeIntervalMs(
   }
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : AUTO_TRADE_INTERVAL_MS;
+}
+
+export function getCreateOrderErrorMessage(
+  createOrderResponse: CreateOrderResponse,
+): string {
+  const errorPayload = createOrderResponse.error as unknown;
+  if (!errorPayload) {
+    return 'Unknown order creation error';
+  }
+  if (typeof errorPayload === 'string') {
+    return errorPayload;
+  }
+  if (typeof errorPayload === 'object') {
+    const errorRecord = errorPayload as Record<string, unknown>;
+    const message =
+      typeof errorRecord.message === 'string' ? errorRecord.message : undefined;
+    const tag =
+      typeof errorRecord._tag === 'string'
+        ? errorRecord._tag
+        : typeof errorRecord.code === 'string'
+          ? errorRecord.code
+          : undefined;
+    if (message && tag) {
+      return `${tag}: ${message}`;
+    }
+    if (message) {
+      return message;
+    }
+    if (tag) {
+      return tag;
+    }
+  }
+  return 'Unknown order creation error';
 }
 
 export const isPositionReachedThreshold = (params: {

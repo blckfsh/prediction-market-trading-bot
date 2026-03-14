@@ -14,7 +14,7 @@ enum TradeOptions {
 
 enum MarketVariant {
   DEFAULT
-  SPORTS_MATCH
+  SPORTS_TEAM_MATCH
   CRYPTO_UP_DOWN
 }
 

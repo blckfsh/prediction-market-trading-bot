@@ -3,7 +3,7 @@ import { MarketVariant } from 'lib/zenstack/models';
 
 const API_MARKET_VARIANTS = [
   'DEFAULT',
-  'SPORTS_MATCH',
+  'SPORTS_TEAM_MATCH',
   'CRYPTO_UP_DOWN',
 ] as const;
 

@@ -8,6 +8,7 @@ import { PredictService } from 'src/predict/predict.service';
 import {
   GetAllMarketsResponse,
   GetCategoriesByResponse,
+  GetTagsResponse,
   GetAllPositionsResponse,
   GetOrderBookResponse,
   MarketDataResponse,
@@ -24,6 +25,11 @@ jest.mock(
   'generated/prisma/client',
   () => ({
     TradeStatus: { BOUGHT: 'BOUGHT', SOLD: 'SOLD' },
+    MarketVariant: {
+      DEFAULT: 'DEFAULT',
+      SPORTS_TEAM_MATCH: 'SPORTS_TEAM_MATCH',
+      CRYPTO_UP_DOWN: 'CRYPTO_UP_DOWN',
+    },
     Trade: class {},
   }),
   { virtual: true },
@@ -158,42 +164,111 @@ describe('BotService', () => {
   });
 
   it('getDefaultMarkets should fetch and return categories', async () => {
-    const mockResponse: GetCategoriesByResponse = {
+    const mockTagsResponse: GetTagsResponse = {
+      success: true,
+      data: [
+        { id: '84', level: 2, name: 'LoL' },
+        { id: '2', level: 1, name: 'Crypto' },
+      ],
+    };
+    const mockSportsResponse: GetCategoriesByResponse = {
       success: true,
       cursor: '',
       data: [
         {
           id: 1,
-          slug: 'cat',
-          title: 'Category',
+          slug: 'lol-test-match',
+          title: 'LoL Test Match',
           description: '',
           imageUrl: '',
           isNegRisk: false,
           isYieldBearing: false,
-          marketVariant: 'DEFAULT' as any,
+          marketVariant: 'SPORTS_TEAM_MATCH' as any,
           createdAt: '',
           markets: [],
           startsAt: '2024-01-01T00:00:00Z',
           status: 'OPEN' as any,
-          tags: [],
+          tags: [{ id: '84', level: 2, name: 'LoL' }],
+        },
+        {
+          id: 2,
+          slug: 'dota2-not-lol',
+          title: 'Dota Test Match',
+          description: '',
+          imageUrl: '',
+          isNegRisk: false,
+          isYieldBearing: false,
+          marketVariant: 'SPORTS_TEAM_MATCH' as any,
+          createdAt: '',
+          markets: [],
+          startsAt: '2024-01-01T00:00:00Z',
+          status: 'OPEN' as any,
+          tags: [{ id: '96', level: 2, name: 'Dota 2' }],
+        },
+      ],
+    };
+    const mockCryptoResponse: GetCategoriesByResponse = {
+      success: true,
+      cursor: '',
+      data: [
+        {
+          id: 3,
+          slug: 'btc-usd-up-down-2026-03-09-12-00-daily',
+          title: 'BTC daily',
+          description: '',
+          imageUrl: '',
+          isNegRisk: false,
+          isYieldBearing: false,
+          marketVariant: 'CRYPTO_UP_DOWN' as any,
+          createdAt: '',
+          markets: [],
+          startsAt: '2024-01-01T00:00:00Z',
+          status: 'OPEN' as any,
+          tags: [{ id: '2', level: 1, name: 'Crypto' }],
         },
       ],
     };
 
-    global.fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve(mockResponse),
-    } as any);
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockTagsResponse),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockSportsResponse),
+      } as any)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve(mockCryptoResponse),
+      } as any);
 
     const result = await service.getDefaultMarkets();
 
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.example.com/categories?status=OPEN',
+    expect(global.fetch).toHaveBeenNthCalledWith(
+      1,
+      'https://api.example.com/tags',
       expect.objectContaining({
         method: 'GET',
       }),
     );
-    expect(result).toEqual(mockResponse);
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain(
+      'https://api.example.com/categories?',
+    );
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain(
+      'marketVariant=SPORTS_TEAM_MATCH',
+    );
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('tagIds=%5B84%5D');
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('first=100');
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain(
+      'marketVariant=CRYPTO_UP_DOWN',
+    );
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain('tagIds=%5B2%5D');
+    expect(result.data.map(({ slug }) => slug)).toEqual([
+      'lol-test-match',
+      'btc-usd-up-down-2026-03-09-12-00-daily',
+    ]);
   });
 
   it('getAllPositions should fetch and return positions', async () => {
@@ -634,6 +709,7 @@ describe('BotService', () => {
       orderBuilder: {} as any,
       signer: { address: '0xSigner' } as any,
       entrySeconds: null,
+      buyTradeType: 'avg-price',
       getOrderBookByMarketId,
       getMarketById,
       subscribeToOrderbook,

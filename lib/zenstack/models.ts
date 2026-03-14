@@ -11,6 +11,7 @@ export type Trade = $ModelResult<$Schema, "Trade">;
 export type BuyPositionConfig = $ModelResult<$Schema, "BuyPositionConfig">;
 export type SellPositionConfig = $ModelResult<$Schema, "SellPositionConfig">;
 export type WalletApproval = $ModelResult<$Schema, "WalletApproval">;
+export type SportsBet = $ModelResult<$Schema, "SportsBet">;
 export const TradeStatus = $schema.enums.TradeStatus.values;
 export type TradeStatus = (typeof TradeStatus)[keyof typeof TradeStatus];
 export const TradeOptions = $schema.enums.TradeOptions.values;

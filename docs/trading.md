@@ -8,8 +8,8 @@ The bot currently supports these `marketVariant` values for buy configuration:
 
 | Market variant   | Purpose                                            | Config key shape                                             | Supported today |
 | ---------------- | -------------------------------------------------- | ------------------------------------------------------------ | --------------- |
-| `CRYPTO_UP_DOWN` | Binary price direction markets such as BTC up/down | `slugWithSuffix` suffix match, for example `15-minutes`      | Yes             |
-| `SPORTS_MATCH`   | Binary sports/esports match winner markets         | `slugWithSuffix` prefix match plus `SportsBet` keyword match | Yes             |
+| `CRYPTO_UP_DOWN` | Binary price direction markets such as BTC up/down | `slugWithSuffix` suffix match, for example `15-minutes` or `daily` | Yes        |
+| `SPORTS_TEAM_MATCH` | Binary sports/esports match winner markets      | `slugWithSuffix` prefix match plus `SportsBet` keyword match | Yes             |
 
 ## Core tables used by trading
 
@@ -32,7 +32,7 @@ Used after a trade already exists.
 
 ### `SportsBet`
 
-Used only for `SPORTS_MATCH` markets.
+Used only for `SPORTS_TEAM_MATCH` markets.
 
 - `category`: slug prefix to match, for example `lol`
 - `keyword`: team or outcome keyword to match inside the market slug, for example `g2`
@@ -51,7 +51,7 @@ Used only for `SPORTS_MATCH` markets.
 Default values on create:
 
 - `CRYPTO_UP_DOWN` defaults to `avg-price`
-- `SPORTS_MATCH` defaults to `na`
+- `SPORTS_TEAM_MATCH` defaults to `na`
 
 Legacy stored values are still normalized:
 
@@ -77,7 +77,7 @@ Behavior:
 4. The bot derives `yesBuyPrice` and `noBuyPrice` from the orderbook.
 5. `tradeType` chooses the binary outcome index.
 
-### `SPORTS_MATCH`
+### `SPORTS_TEAM_MATCH`
 
 Sports trading uses two checks:
 
@@ -128,7 +128,7 @@ sequenceDiagram
     Trade->>API: Fetch market + orderbook
     API-->>Trade: Market and prices
     Trade->>Trade: Check market time left and zero-price guard
-    alt SPORTS_MATCH with keyword
+    alt SPORTS_TEAM_MATCH with keyword
       Trade->>Trade: Match sports keyword against outcome names
       alt No matching outcome
         Trade-->>Bot: Skip
@@ -220,6 +220,8 @@ sequenceDiagram
 
 ## Important runtime notes
 
+- Category discovery is tag-aware. The bot loads tag IDs from `/tags`, then fetches `CRYPTO_UP_DOWN` and `SPORTS_TEAM_MATCH` categories separately.
+- Sports category discovery is narrowed to LoL-tagged categories, with a local `lol-` slug check as a safeguard because the upstream `tagIds` filter can still return non-LoL rows.
 - The buy flow is WebSocket-triggered; it does not scan every market continuously.
 - `entry` is interpreted as seconds after market creation.
 - If either side has price `0`, the bot skips the market.
@@ -230,7 +232,8 @@ sequenceDiagram
 ## Current implementation assumptions
 
 - `CRYPTO_UP_DOWN` is treated as a binary market with yes/no style pricing.
-- `SPORTS_MATCH` assumes outcome names contain enough text to match the `SportsBet.keyword`.
+- `SPORTS_TEAM_MATCH` assumes outcome names contain enough text to match the `SportsBet.keyword`.
 - Current supported slug keywords are:
   - suffix: `15-minutes`
+  - suffix: `daily`
   - prefix: `lol`
