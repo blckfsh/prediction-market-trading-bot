@@ -71,6 +71,7 @@ import {
   normalizeBuyTradeType,
   type BuyTradeType,
 } from 'src/predict/buy-trade-type';
+import type { SlugMatchRuleRecord } from 'src/predict/predict.repository';
 
 const CATEGORY_FETCH_FIRST = 100;
 const CATEGORY_FETCH_SORT = 'VOLUME_24H_DESC';
@@ -91,6 +92,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private positions: Position[] = [];
   private buyPositionConfigsByKey = new Map<string, BuyPositionConfig>();
   private sellPositionConfigsByKey = new Map<string, SellPositionConfig>();
+  private slugMatchRules: SlugMatchRuleRecord[] = [];
   private sportsBets: Array<{ id: number; keyword: string; category: string }> =
     [];
   private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
@@ -151,6 +153,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     await this.initializeBuyPositionConfigs();
     this.logger.log('Loading sell position configs...');
     await this.initializeSellPositionConfigs();
+    this.logger.log('Loading slug match rules...');
+    await this.initializeSlugMatchRules();
     this.logger.log('Loading sports bets...');
     await this.initializeSportsBets();
     await this.initializeCategoryTable();
@@ -430,6 +434,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private async initializeSportsBets() {
     this.sportsBets = await this.predictRepository.getAllSportsBets();
+  }
+
+  private async initializeSlugMatchRules() {
+    this.slugMatchRules = await this.predictRepository.getAllSlugMatchRules();
   }
 
   /* ****************************************************
@@ -1230,10 +1238,76 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
-  private resolveSupportedSlugKeyword(slug: string): string | null {
+  private getCategoryBySlug(slug: string): Category | undefined {
+    return this.categories.find((item) => item.slug === slug);
+  }
+
+  private isCryptoDailySlug(slug: string): boolean {
+    const normalizedSlug = slug.trim().toLowerCase();
+    if (normalizedSlug.endsWith('daily')) {
+      return true;
+    }
+    // Current API daily format example:
+    // bitcoin-up-or-down-on-march-26-2026
+    return /-up-or-down-on-[a-z]+-\d{1,2}-\d{4}$/.test(normalizedSlug);
+  }
+
+  private matchesSlugRule(slug: string, rule: SlugMatchRuleRecord): boolean {
+    const normalizedSlug = slug.trim().toLowerCase();
+    const pattern = rule.pattern.trim().toLowerCase();
+    if (!pattern) {
+      return false;
+    }
+    switch (rule.matchType) {
+      case 'prefix':
+        return normalizedSlug.startsWith(pattern);
+      case 'suffix':
+        return normalizedSlug.endsWith(pattern);
+      case 'regex':
+        try {
+          return new RegExp(rule.pattern, 'i').test(slug);
+        } catch {
+          this.logger.warn(
+            `Invalid slug regex rule ignored. Rule ID: ${rule.id}, pattern: ${rule.pattern}`,
+          );
+          return false;
+        }
+      default:
+        return false;
+    }
+  }
+
+  private resolveSupportedSlugKeyword(
+    slug: string,
+    marketVariant?: MarketVariant,
+  ): string | null {
+    for (const rule of this.slugMatchRules) {
+      if (rule.marketVariant && marketVariant && rule.marketVariant !== marketVariant) {
+        continue;
+      }
+      if (rule.marketVariant && !marketVariant) {
+        continue;
+      }
+      if (this.matchesSlugRule(slug, rule)) {
+        return rule.configKey;
+      }
+    }
+    const hasCryptoRules = this.slugMatchRules.some(
+      (rule) =>
+        rule.marketVariant === null ||
+        rule.marketVariant === MarketVariant.CRYPTO_UP_DOWN,
+    );
+    if (marketVariant === MarketVariant.CRYPTO_UP_DOWN && hasCryptoRules) {
+      return null;
+    }
     for (const keyword of SUPPORTED_SLUG_KEYWORDS) {
-      if (keyword.kind === 'suffix' && slug.endsWith(keyword.value)) {
-        return keyword.value;
+      if (keyword.kind === 'suffix') {
+        if (slug.endsWith(keyword.value)) {
+          return keyword.value;
+        }
+        if (keyword.value === 'daily' && this.isCryptoDailySlug(slug)) {
+          return keyword.value;
+        }
       }
       if (keyword.kind === 'prefix') {
         const prefix = keyword.value.endsWith('-')
@@ -1248,7 +1322,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getTradeAmountForMarketSlug(slug: string): number {
-    const category = this.categories.find((item) => item.slug === slug);
+    const category = this.getCategoryBySlug(slug);
     if (!category) {
       this.logger.warn(
         `Trade amount fallback to default (1). Category not found for slug ${slug}.`,
@@ -1256,7 +1330,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return 1;
     }
 
-    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    const supportedKeyword = this.resolveSupportedSlugKeyword(
+      slug,
+      category.marketVariant,
+    );
     if (!supportedKeyword) {
       this.logger.warn(
         `Trade amount fallback to default (1). No supported keyword found for slug ${slug}.`,
@@ -1282,7 +1359,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getEntrySecondsForMarketSlug(slug: string): number | null {
-    const category = this.categories.find((item) => item.slug === slug);
+    const category = this.getCategoryBySlug(slug);
     if (!category) {
       this.logger.warn(
         `Entry check skipped. Category not found for slug ${slug}.`,
@@ -1298,7 +1375,10 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       );
       return null;
     }
-    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    const supportedKeyword = this.resolveSupportedSlugKeyword(
+      slug,
+      category.marketVariant,
+    );
     if (!supportedKeyword) {
       this.logger.warn(
         `Entry check skipped. No supported keyword found for slug ${slug}.`,
@@ -1318,8 +1398,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getBuyTradeTypeForMarketSlug(slug: string): BuyTradeType {
-    const category = this.categories.find((item) => item.slug === slug);
-    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    const category = this.getCategoryBySlug(slug);
+    const supportedKeyword = this.resolveSupportedSlugKeyword(
+      slug,
+      category?.marketVariant,
+    );
     const buyConfig = supportedKeyword
       ? this.buyPositionConfigsByKey.get(buildBuyConfigKey(supportedKeyword))
       : undefined;
@@ -1358,7 +1441,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getStopLossPercentageForMarketSlug(slug: string): number | null {
-    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    const category = this.getCategoryBySlug(slug);
+    const supportedKeyword = this.resolveSupportedSlugKeyword(
+      slug,
+      category?.marketVariant,
+    );
     if (!supportedKeyword) {
       this.logger.warn(
         `Stop-loss check skipped. No supported keyword found for slug ${slug}.`,
@@ -1378,7 +1465,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getAmountPercentageForMarketSlug(slug: string): number | null {
-    const supportedKeyword = this.resolveSupportedSlugKeyword(slug);
+    const category = this.getCategoryBySlug(slug);
+    const supportedKeyword = this.resolveSupportedSlugKeyword(
+      slug,
+      category?.marketVariant,
+    );
     if (!supportedKeyword) {
       this.logger.warn(
         `Amount percentage check skipped. No supported keyword found for slug ${slug}.`,

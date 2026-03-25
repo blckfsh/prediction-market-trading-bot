@@ -271,6 +271,58 @@ describe('BotService', () => {
     ]);
   });
 
+  it('resolveSupportedSlugKeyword should map dated crypto daily slug to daily', () => {
+    const keyword = (service as any).resolveSupportedSlugKeyword(
+      'bitcoin-up-or-down-on-march-26-2026',
+    );
+    expect(keyword).toBe('daily');
+  });
+
+  it('resolveSupportedSlugKeyword should use db slug rule when available', () => {
+    (service as any).slugMatchRules = [
+      {
+        id: 1,
+        marketVariant: 'CRYPTO_UP_DOWN',
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 1,
+      },
+    ];
+    const keyword = (service as any).resolveSupportedSlugKeyword(
+      'bitcoin-up-or-down-on-march-26-2026',
+      'CRYPTO_UP_DOWN',
+    );
+    expect(keyword).toBe('daily');
+  });
+
+  it('resolveSupportedSlugKeyword should not use fallback crypto matching when crypto rules exist', () => {
+    (service as any).slugMatchRules = [
+      {
+        id: 2,
+        marketVariant: 'CRYPTO_UP_DOWN',
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 1,
+      },
+    ];
+    const keyword = (service as any).resolveSupportedSlugKeyword(
+      'ethereum-up-or-down-on-march-26-2026',
+      'CRYPTO_UP_DOWN',
+    );
+    expect(keyword).toBeNull();
+  });
+
+  it('resolveSupportedSlugKeyword should not map hourly crypto slug to daily', () => {
+    const keyword = (service as any).resolveSupportedSlugKeyword(
+      'ethereum-up-or-down-march-25-2026-10am-et',
+    );
+    expect(keyword).toBeNull();
+  });
+
   it('getAllPositions should fetch and return positions', async () => {
     const mockResponse: GetAllPositionsResponse = {
       success: true,

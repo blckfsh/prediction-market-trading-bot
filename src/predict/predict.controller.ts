@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Param,
   Patch,
+  ParseIntPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -12,8 +13,10 @@ import { PredictService } from 'src/predict/predict.service';
 import {
   CreateBuyPositionConfigBody,
   CreateSellPositionConfigBody,
+  CreateSlugMatchRuleBody,
   UpdateBuyPositionConfigBody,
   UpdateSellPositionConfigBody,
+  UpdateSlugMatchRuleBody,
 } from 'src/dto/trade-config.dto';
 import { AuthGuard } from 'src/common/guard/auth.guard';
 import { normalizeMarketVariant } from 'src/predict/predict.market-variant';
@@ -120,5 +123,44 @@ export class PredictController {
       slugWithSuffix,
       body,
     );
+  }
+
+  @Get('slug-match-rules')
+  async getAllSlugMatchRules() {
+    return this.predictService.getAllSlugMatchRules();
+  }
+
+  @Post('slug-match-rule')
+  @UseGuards(AuthGuard)
+  async createSlugMatchRule(@Body() body: CreateSlugMatchRuleBody) {
+    return this.predictService.createSlugMatchRule({
+      marketVariant: body.marketVariant
+        ? normalizeMarketVariant(body.marketVariant)
+        : null,
+      configKey: body.configKey,
+      matchType: body.matchType,
+      pattern: body.pattern,
+      enabled: body.enabled,
+      priority: body.priority,
+    });
+  }
+
+  @Patch('slug-match-rule/:id')
+  @UseGuards(AuthGuard)
+  async updateSlugMatchRule(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateSlugMatchRuleBody,
+  ) {
+    return this.predictService.updateSlugMatchRule(id, {
+      marketVariant:
+        body.marketVariant !== undefined
+          ? normalizeMarketVariant(body.marketVariant)
+          : undefined,
+      configKey: body.configKey,
+      matchType: body.matchType,
+      pattern: body.pattern,
+      enabled: body.enabled,
+      priority: body.priority,
+    });
   }
 }

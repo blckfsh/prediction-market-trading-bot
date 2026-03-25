@@ -74,3 +74,18 @@ model SportsBet {
   keyword   String
   category  String
 }
+
+model SlugMatchRule {
+  id            Int           @id @default(autoincrement())
+  marketVariant MarketVariant?
+  configKey     String
+  matchType     String
+  pattern       String
+  enabled       Boolean       @default(true)
+  priority      Int           @default(100)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([marketVariant, configKey, matchType, pattern])
+  @@index([enabled, priority])
+}

@@ -43,6 +43,9 @@ describe('PredictController', () => {
             getSellPositionConfigByMarketVariant: jest.fn(),
             createSellPositionConfig: jest.fn(),
             updateSellPositionConfig: jest.fn(),
+            getAllSlugMatchRules: jest.fn(),
+            createSlugMatchRule: jest.fn(),
+            updateSlugMatchRule: jest.fn(),
           },
         },
         {
@@ -203,6 +206,88 @@ describe('PredictController', () => {
         'crypto-up-down-1',
         { stopLossPercentage: 20 },
       );
+    });
+  });
+
+  describe('slugMatchRules', () => {
+    it('returns slug match rules', async () => {
+      const rules = [
+        {
+          id: 1,
+          marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+          configKey: 'daily',
+          matchType: 'regex',
+          pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+          enabled: true,
+          priority: 10,
+        },
+      ];
+      predictService.getAllSlugMatchRules.mockResolvedValue(rules);
+
+      await expect(controller.getAllSlugMatchRules()).resolves.toEqual(rules);
+      expect(predictService.getAllSlugMatchRules).toHaveBeenCalled();
+    });
+
+    it('creates slug match rule via service', async () => {
+      const createdRule = {
+        id: 3,
+        marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 1,
+      };
+      predictService.createSlugMatchRule.mockResolvedValue(createdRule);
+
+      await expect(
+        controller.createSlugMatchRule({
+          marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+          configKey: 'daily',
+          matchType: 'regex',
+          pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+          enabled: true,
+          priority: 1,
+        }),
+      ).resolves.toEqual(createdRule);
+
+      expect(predictService.createSlugMatchRule).toHaveBeenCalledWith({
+        marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 1,
+      });
+    });
+
+    it('updates slug match rule via service', async () => {
+      const updatedRule = {
+        id: 3,
+        marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^ethereum-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 2,
+      };
+      predictService.updateSlugMatchRule.mockResolvedValue(updatedRule);
+
+      await expect(
+        controller.updateSlugMatchRule(3, {
+          pattern: '^ethereum-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+          priority: 2,
+        }),
+      ).resolves.toEqual(updatedRule);
+
+      expect(predictService.updateSlugMatchRule).toHaveBeenCalledWith(3, {
+        marketVariant: undefined,
+        configKey: undefined,
+        matchType: undefined,
+        pattern: '^ethereum-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: undefined,
+        priority: 2,
+      });
     });
   });
 });

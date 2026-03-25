@@ -13,8 +13,9 @@ type SupportedSlugKeyword = {
   value: string;
 };
 
+// NOTE: commented out because in the future, we may not want to trade 15-minutes markets
 const SUPPORTED_SLUG_KEYWORDS: SupportedSlugKeyword[] = [
-  { kind: 'suffix', value: '15-minutes' },
+  // { kind: 'suffix', value: '15-minutes' },
   { kind: 'suffix', value: 'daily' },
   { kind: 'prefix', value: 'lol' },
 ];
