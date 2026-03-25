@@ -41,6 +41,9 @@ describe('PredictService', () => {
             getSellPositionConfigByMarketVariant: jest.fn(),
             saveSellPositionConfig: jest.fn(),
             updateSellPositionConfig: jest.fn(),
+            getAllSlugMatchRules: jest.fn(),
+            saveSlugMatchRule: jest.fn(),
+            updateSlugMatchRule: jest.fn(),
             getWalletApprovalByWalletAddress: jest.fn(),
             saveWalletApprovals: jest.fn(),
           },
@@ -162,6 +165,54 @@ describe('PredictService', () => {
       'crypto-up-down-1',
       { stopLossPercentage: 20 },
     );
+  });
+
+  it('gets slug match rules', async () => {
+    const rules = [
+      {
+        id: 1,
+        marketVariant: MarketVariant.CRYPTO_UP_DOWN,
+        configKey: 'daily',
+        matchType: 'regex',
+        pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        enabled: true,
+        priority: 10,
+      },
+    ];
+    predictRepository.getAllSlugMatchRules.mockResolvedValue(rules as any);
+
+    await expect(service.getAllSlugMatchRules()).resolves.toEqual(rules);
+    expect(predictRepository.getAllSlugMatchRules).toHaveBeenCalled();
+  });
+
+  it('creates slug match rule with defaults', async () => {
+    const created = {
+      id: 2,
+      marketVariant: null,
+      configKey: 'daily',
+      matchType: 'suffix',
+      pattern: 'daily',
+      enabled: true,
+      priority: 100,
+    };
+    predictRepository.saveSlugMatchRule.mockResolvedValue(created as any);
+
+    await expect(
+      service.createSlugMatchRule({
+        marketVariant: null,
+        configKey: 'daily',
+        matchType: 'suffix',
+        pattern: 'daily',
+      }),
+    ).resolves.toEqual(created);
+    expect(predictRepository.saveSlugMatchRule).toHaveBeenCalledWith({
+      marketVariant: null,
+      configKey: 'daily',
+      matchType: 'suffix',
+      pattern: 'daily',
+      enabled: true,
+      priority: 100,
+    });
   });
 
   it('setReferralCode should post and return true', async () => {

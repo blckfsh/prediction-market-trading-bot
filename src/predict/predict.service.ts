@@ -6,6 +6,7 @@ import {
 } from 'generated/prisma/client';
 import { MarketVariant } from 'lib/zenstack/models';
 import { PredictRepository } from './predict.repository';
+import type { SlugMatchRuleRecord } from './predict.repository';
 import { REFERRAL_CODE } from 'src/common/helpers/constants';
 import { OrderBuilder } from '@predictdotfun/sdk';
 import { SetApprovalsResult } from '@predictdotfun/sdk';
@@ -96,6 +97,42 @@ export class PredictService {
       slugWithSuffix,
       updates,
     );
+  }
+
+  async getAllSlugMatchRules(): Promise<SlugMatchRuleRecord[]> {
+    return this.predictRepository.getAllSlugMatchRules();
+  }
+
+  async createSlugMatchRule(params: {
+    marketVariant: MarketVariant | null;
+    configKey: string;
+    matchType: 'prefix' | 'suffix' | 'regex';
+    pattern: string;
+    enabled?: boolean;
+    priority?: number;
+  }): Promise<SlugMatchRuleRecord> {
+    return this.predictRepository.saveSlugMatchRule({
+      marketVariant: params.marketVariant,
+      configKey: params.configKey,
+      matchType: params.matchType,
+      pattern: params.pattern,
+      enabled: params.enabled ?? true,
+      priority: params.priority ?? 100,
+    });
+  }
+
+  async updateSlugMatchRule(
+    id: number,
+    updates: {
+      marketVariant?: MarketVariant | null;
+      configKey?: string;
+      matchType?: 'prefix' | 'suffix' | 'regex';
+      pattern?: string;
+      enabled?: boolean;
+      priority?: number;
+    },
+  ): Promise<SlugMatchRuleRecord> {
+    return this.predictRepository.updateSlugMatchRule(id, updates);
   }
 
   async setReferralCode(params: {

@@ -10,14 +10,25 @@ _The image above shows the Predict bot interface._
 
 ## Trading Strategies
 
-- Supports `CRYPTO_UP_DOWN` markets (binary crypto price direction, including suffix-based config matching like `15-minutes` and `daily`).
+- Supports `CRYPTO_UP_DOWN` markets (binary crypto price direction with dynamic DB-driven slug matching via `SlugMatchRule`, for example BTC-only `daily` rollout).
 - Supports `SPORTS_TEAM_MATCH` markets (sports/esports match winner flow using category + keyword matching via `SportsBet`).
 - Applies stop-loss and profit-taking sell logic across supported market variants.
+
+## Dynamic slug matching
+
+`SlugMatchRule` lets you control which slugs map to which config key at runtime without code edits.
+
+- `GET /predict/slug-match-rules`
+- `POST /predict/slug-match-rule` (guarded)
+- `PATCH /predict/slug-match-rule/:id` (guarded)
+
+This enables phased rollouts such as BTC daily first, then ETH/BNB later, while keeping `BuyPositionConfig.slugWithSuffix` stable (for example `daily`).
 
 ## Documentation
 
 - Docs index (folder): [`docs/`](docs/)
 - Trading behavior and supported variants: [`docs/trading.md`](docs/trading.md)
+- Slug rule rollout playbook: [`docs/slug-match-rules.md`](docs/slug-match-rules.md)
 - Architecture and sequence diagrams: [`docs/architecture.md`](docs/architecture.md)
 - Environment variables: [`docs/env.md`](docs/env.md)
 
