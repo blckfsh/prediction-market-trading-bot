@@ -120,3 +120,5 @@ sequenceDiagram
 - WebSocket-driven auto-trade is controlled by `PREDICT_WS_ENABLED` and `PREDICT_WS_AUTO_TRADE`.
 - Refresh intervals and throttling are driven by env vars (see `docs/env.md`).
 - Trade lifecycle state is persisted in `Trade` records (`BOUGHT` -> `SOLD`).
+- Sell ownership is strict: a position is sell-eligible only when `Trade.slug` matches `<position.market.categorySlug>::outcome:<position.outcome.onChainId>`.
+- This ownership guard prevents manual wallet positions (same account, not bot-managed) from being auto-sold by stop-loss/profit-taking.

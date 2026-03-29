@@ -36,6 +36,7 @@ describe('TradeService', () => {
 
     predictRepository = {
       getTradeByMarketId: jest.fn(),
+      getActiveTradeByMarketId: jest.fn(),
       saveMarketTrade: jest.fn(),
       updateMarketTradeStatus: jest.fn(),
     } as unknown as PredictRepository;
@@ -117,6 +118,7 @@ describe('TradeService', () => {
     repo.getTradeByMarketId = jest.fn().mockResolvedValue({
       id: 1,
       status: 'BOUGHT',
+      slug: 'cat::outcome:1',
       buyAmount: 100,
       buyAmountInUsd: 100,
     });
@@ -255,7 +257,7 @@ describe('TradeService', () => {
     };
 
     const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.getActiveTradeByMarketId = jest.fn().mockResolvedValue(null);
 
     const getOrderBookByMarketId = jest.fn().mockResolvedValue({
       success: true,
@@ -308,7 +310,7 @@ describe('TradeService', () => {
     };
 
     const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.getActiveTradeByMarketId = jest.fn().mockResolvedValue(null);
     repo.saveMarketTrade = jest.fn().mockResolvedValue({ id: 99 });
 
     const getOrderBookByMarketId = jest.fn().mockResolvedValue({
@@ -415,7 +417,7 @@ describe('TradeService', () => {
     };
 
     const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.getActiveTradeByMarketId = jest.fn().mockResolvedValue(null);
     repo.saveMarketTrade = jest.fn();
 
     const getOrderBookByMarketId = jest.fn().mockResolvedValue({

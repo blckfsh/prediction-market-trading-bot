@@ -38,11 +38,26 @@ import type { BuyTradeType } from 'src/predict/buy-trade-type';
 export class TradeService {
   private readonly logger = new Logger(TradeService.name);
   private readonly dailyRealizedPnlUsdByDate = new Map<string, number>();
+  private static readonly MANAGED_TRADE_SLUG_SEPARATOR = '::outcome:';
 
   constructor(
     private readonly predictRepository: PredictRepository,
     private readonly configService: ConfigService,
   ) {}
+
+  private buildManagedTradeSlug(slug: string, outcomeOnChainId: string): string {
+    return `${slug}${TradeService.MANAGED_TRADE_SLUG_SEPARATOR}${outcomeOnChainId}`;
+  }
+
+  private isTradeManagedForPosition(trade: Trade, position: Position): boolean {
+    const marketSlug = position.market.categorySlug;
+    const outcomeOnChainId = position.outcome.onChainId;
+    if (!marketSlug || !outcomeOnChainId) {
+      return false;
+    }
+    const expectedSlug = this.buildManagedTradeSlug(marketSlug, outcomeOnChainId);
+    return trade.slug === expectedSlug;
+  }
 
   private async shouldHaltTradingForDay(
     positions?: Position[],
@@ -127,6 +142,12 @@ export class TradeService {
         position.market.id,
       );
       if (!trade || trade.status === TradeStatus.SOLD) {
+        continue;
+      }
+      if (!this.isTradeManagedForPosition(trade, position)) {
+        this.logger.warn(
+          `Skipping sell for market ${position.market.id}. Position is not managed by bot trade ownership rules.`,
+        );
         continue;
       }
 
@@ -250,6 +271,12 @@ export class TradeService {
         position.market.id,
       );
       if (!trade || trade.status === TradeStatus.SOLD) {
+        continue;
+      }
+      if (!this.isTradeManagedForPosition(trade, position)) {
+        this.logger.warn(
+          `Skipping sell for market ${position.market.id}. Position is not managed by bot trade ownership rules.`,
+        );
         continue;
       }
 
@@ -618,6 +645,7 @@ export class TradeService {
     );
     const outcomeOnChainId =
       marketData.data.outcomes[chosenOutcomeIndex].onChainId;
+    market.slug = this.buildManagedTradeSlug(market.slug, outcomeOnChainId);
 
     const rawTargetPrice = chosenOutcomeIndex === 0 ? yesBuyPrice : noBuyPrice;
     if (rawTargetPrice <= 0) {

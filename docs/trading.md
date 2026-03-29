@@ -32,6 +32,15 @@ Used after a trade already exists.
 - `stopLossPercentage`: sell when unrealized loss reaches this threshold
 - `amountPercentage`: how much of the position to sell
 
+### `Trade`
+
+Used as the source of truth for bot-managed position ownership.
+
+- `marketId`: market identifier used to fetch candidate trade rows
+- `status`: lifecycle state (`BOUGHT` -> `SOLD`)
+- `slug`: managed ownership key in the form `<categorySlug>::outcome:<onChainId>`
+  - example: `bitcoin-up-or-down-on-march-29-2026::outcome:123456789`
+
 ### `SportsBet`
 
 Used only for `SPORTS_TEAM_MATCH` markets.
@@ -184,11 +193,14 @@ Sell behavior is shared across supported variants.
 The bot:
 
 1. loads open positions
-2. finds the saved `Trade`
-3. checks stop-loss and profit-taking thresholds
-4. computes sell quantity from `amountPercentage`
-5. creates a sell order
-6. updates the persisted trade status to `SOLD`
+2. finds the saved `Trade` by `marketId`
+3. validates ownership by matching `Trade.slug` to `<position.market.categorySlug>::outcome:<position.outcome.onChainId>`
+4. checks stop-loss and profit-taking thresholds
+5. computes sell quantity from `amountPercentage`
+6. creates a sell order
+7. updates the persisted trade status to `SOLD`
+
+If ownership does not match, the position is skipped and no sell is attempted.
 
 ![Sell position sequence diagram](images/sell-position-sequence-diagram.png)
 _Rendered sell flow sequence diagram._
@@ -210,6 +222,10 @@ sequenceDiagram
     alt No trade or already SOLD
       Trade-->>Bot: Skip position
     else Trade exists
+      Trade->>Trade: Validate managed ownership key (slug + outcome onChainId)
+      alt Ownership mismatch
+        Trade-->>Bot: Skip position
+      else Ownership matched
       Trade->>Bot: Resolve stopLoss / amountPercentage config
       Bot-->>Trade: Sell config
       Trade->>Trade: Check stop-loss or profit-taking threshold
@@ -231,9 +247,16 @@ sequenceDiagram
           DB-->>Trade: Persisted
         end
       end
+      end
     end
   end
 ```
+
+## Migration note for existing trades
+
+- Trades created before this ownership-key behavior may have legacy `Trade.slug` values that do not include `::outcome:<onChainId>`.
+- Those legacy rows are treated as unmanaged for sell decisions and will be skipped by stop-loss/profit-taking.
+- New bot buys automatically persist the managed ownership key format.
 
 ## Important runtime notes
 
