@@ -47,6 +47,7 @@ jest.mock('src/predict/predict.repository', () => {
   const MockRepo = jest.fn().mockImplementation(() => ({
     saveMarketTrade: jest.fn(),
     getTradeByMarketId: jest.fn(),
+    getActiveTradeByMarketId: jest.fn(),
     updateMarketTradeStatus: jest.fn(),
   }));
   return { PredictRepository: MockRepo };
@@ -726,7 +727,7 @@ describe('BotService', () => {
     };
 
     const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest.fn().mockResolvedValue(null);
+    repo.getActiveTradeByMarketId = jest.fn().mockResolvedValue(null);
 
     const getOrderBookByMarketId = jest.fn().mockResolvedValue({
       success: true,
@@ -778,13 +779,13 @@ describe('BotService', () => {
 
     const positions = [
       {
-        market: { id: 1, status: 'RESOLVED' },
+        market: { id: 1, status: 'RESOLVED', categorySlug: 'resolved-cat' },
         outcome: { onChainId: '1' },
         amount: '1000000000000000000',
         valueUsd: '40',
       },
       {
-        market: { id: 2, status: 'OPEN' },
+        market: { id: 2, status: 'OPEN', categorySlug: 'open-cat' },
         outcome: { onChainId: '2' },
         amount: '1000000000000000000',
         valueUsd: '40',
@@ -797,6 +798,7 @@ describe('BotService', () => {
       .mockResolvedValueOnce({
         id: 1,
         status: TradeStatus.BOUGHT,
+        slug: 'open-cat::outcome:2',
         buyAmount: 100,
         buyAmountInUsd: 100,
       });
@@ -821,7 +823,9 @@ describe('BotService', () => {
     expect(sellPositionSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         existingTrade: expect.objectContaining({ id: 1 }),
-        position: expect.objectContaining({ market: { id: 2, status: 'OPEN' } }),
+        position: expect.objectContaining({
+          market: expect.objectContaining({ id: 2, status: 'OPEN' }),
+        }),
       }),
     );
   });
@@ -833,7 +837,7 @@ describe('BotService', () => {
 
     const positions = [
       {
-        market: { id: 3, status: 'OPEN' },
+        market: { id: 3, status: 'OPEN', categorySlug: 'open-cat-2' },
         outcome: { onChainId: '1' },
         amount: '1000000000000000000',
         valueUsd: '40',
@@ -844,6 +848,7 @@ describe('BotService', () => {
     repo.getTradeByMarketId = jest.fn().mockResolvedValue({
       id: 3,
       status: TradeStatus.SOLD,
+      slug: 'open-cat-2::outcome:1',
       buyAmount: 100,
       buyAmountInUsd: 100,
     });
