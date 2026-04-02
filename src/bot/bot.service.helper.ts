@@ -36,7 +36,9 @@ const SUPPORTED_CATEGORY_VARIANTS = new Set<MarketVariant>([
 
 function filterAndSortSupportedCategories(categories: Category[]): Category[] {
   return categories
-    .filter((category) => SUPPORTED_CATEGORY_VARIANTS.has(category.marketVariant))
+    .filter((category) =>
+      SUPPORTED_CATEGORY_VARIANTS.has(category.marketVariant),
+    )
     .sort((a, b) => {
       const dateA = new Date(a.startsAt).getTime();
       const dateB = new Date(b.startsAt).getTime();
@@ -157,8 +159,13 @@ function shouldLogRealtimeEvent(params: {
   lastRealtimeLogAt: Map<string, number>;
   lastRealtimeTimestamp: Map<string, number>;
 }): boolean {
-  const { configService, topic, data, lastRealtimeLogAt, lastRealtimeTimestamp } =
-    params;
+  const {
+    configService,
+    topic,
+    data,
+    lastRealtimeLogAt,
+    lastRealtimeTimestamp,
+  } = params;
   const key = getTopicLabel(topic);
   const now = Date.now();
   const minIntervalMs = Number(
@@ -169,7 +176,11 @@ function shouldLogRealtimeEvent(params: {
     return true;
   }
 
-  if (topic.name === RealtimeTopic.PredictOrderbook && data && typeof data === 'object') {
+  if (
+    topic.name === RealtimeTopic.PredictOrderbook &&
+    data &&
+    typeof data === 'object'
+  ) {
     const orderbook = data as PredictOrderbook;
     const lastTimestamp = lastRealtimeTimestamp.get(key);
     if (orderbook.updateTimestampMs !== undefined) {
@@ -189,17 +200,12 @@ function shouldLogRealtimeEvent(params: {
   return true;
 }
 
-function buildBuyConfigKey(
-  suffix: string, 
-): string {
+function buildBuyConfigKey(suffix: string): string {
   return suffix;
 }
 
 function getMarketDurationMs(
-  market: Pick<
-    Category['markets'][number],
-    'boostStartsAt' | 'boostEndsAt'
-  >,
+  market: Pick<Category['markets'][number], 'boostStartsAt' | 'boostEndsAt'>,
 ): number | null {
   const boostStart = market.boostStartsAt
     ? new Date(market.boostStartsAt)
@@ -272,4 +278,3 @@ export {
   getMarketDurationMs,
   getMarketTimeLeftMessage,
 };
-

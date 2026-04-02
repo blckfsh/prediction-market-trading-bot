@@ -7,6 +7,8 @@ jest.mock(
   '@prisma/client',
   () => ({
     PrismaClient: class {},
+    TradeStatus: { BOUGHT: 'BOUGHT', SOLD: 'SOLD' },
+    Trade: class {},
   }),
   { virtual: true },
 );
@@ -14,15 +16,6 @@ jest.mock(
 jest.mock('src/predict/predict.repository', () => ({
   PredictRepository: class PredictRepository {},
 }));
-
-jest.mock(
-  'generated/prisma/client',
-  () => ({
-    TradeStatus: { BOUGHT: 'BOUGHT', SOLD: 'SOLD' },
-    Trade: class {},
-  }),
-  { virtual: true },
-);
 
 describe('TradeService', () => {
   let service: TradeService;
@@ -283,7 +276,9 @@ describe('TradeService', () => {
     });
 
     const subscribeToOrderbook = jest.fn();
-    const createOrderSpy = jest.fn().mockResolvedValue({ success: true } as any);
+    const createOrderSpy = jest
+      .fn()
+      .mockResolvedValue({ success: true } as any);
 
     await (service as any).buyPosition({
       market,
@@ -474,4 +469,3 @@ describe('TradeService', () => {
     expect(createOrderSpy).not.toHaveBeenCalled();
   });
 });
-

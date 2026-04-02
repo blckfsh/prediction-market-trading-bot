@@ -1,4 +1,4 @@
 export interface BalanceResponse {
-    signerBalance: string
-    predictAccountBalance: string
+  signerBalance: string;
+  predictAccountBalance: string;
 }

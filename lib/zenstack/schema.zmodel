@@ -2,6 +2,13 @@ datasource db {
   provider = "postgresql"
 }
 
+plugin prisma {
+  provider = "@core/prisma"
+  output = "../prisma/schema.prisma"
+  format = true
+  generateClient = false
+}
+
 enum TradeStatus {
   BOUGHT
   SOLD
@@ -18,10 +25,30 @@ enum MarketVariant {
   CRYPTO_UP_DOWN
 }
 
+enum BuyTradeType {
+  YES
+  NO
+  AVG_PRICE
+  NA
+}
+
+enum SlugMatchType {
+  PREFIX
+  SUFFIX
+  REGEX
+}
+
+enum BetStatus {
+  ACTIVE
+  INACTIVE
+}
+
 model Trade {
   id                Int        @id @default(autoincrement())
   marketId          Int
   slug              String
+  marketSlug        String?
+  outcomeOnChainId  String?
   buyAmount         Int
   buyAmountInUsd    Decimal
   buyOrderHash      String
@@ -32,23 +59,43 @@ model Trade {
   sellTimestamp     DateTime?
   profitOrLossInUsd Decimal?
   status            TradeStatus
+
+  @@index([marketId, status, buyTimestamp])
+}
+
+model MarketProfile {
+  id            Int                @id @default(autoincrement())
+  marketVariant MarketVariant
+  configKey     String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  buyConfig     BuyPositionConfig?
+  sellConfig    SellPositionConfig?
+  sportsBets    SportsBet[]
+  cryptoBets    CryptoBet[]
+
+  @@unique([marketVariant, configKey])
 }
 
 model BuyPositionConfig {
-  id                Int          @id @default(autoincrement())
-  marketVariant     MarketVariant
-  slugWithSuffix    String
-  amount            Int
-  entry             Int
-  tradeType         String       @default("greater-than-no")
+  id              Int          @id @default(autoincrement())
+  marketProfileId Int          @unique
+  amount          Int
+  entry           Int
+  tradeType       BuyTradeType @default(AVG_PRICE)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  marketProfile   MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
 }
 
 model SellPositionConfig {
-  id                  Int         @id @default(autoincrement())
-  marketVariant       MarketVariant
-  slugWithSuffix      String
-  stopLossPercentage  Int
-  amountPercentage    Int
+  id                 Int           @id @default(autoincrement())
+  marketProfileId    Int           @unique
+  stopLossPercentage Int
+  amountPercentage   Int
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+  marketProfile      MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
 }
 
 model WalletApproval {
@@ -58,8 +105,32 @@ model WalletApproval {
 }
 
 model SportsBet {
-  id         Int         @id @default(autoincrement())
-  keyword    String
-  category   String
+  id              Int           @id @default(autoincrement())
+  marketProfileId Int
+  keyword         String
+  category        String
+  status          BetStatus     @default(ACTIVE)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  marketProfile   MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([marketProfileId, category, keyword])
+}
+
+model CryptoBet {
+  id              Int           @id @default(autoincrement())
+  marketProfileId Int
+  matchType       SlugMatchType
+  pattern         String
+  status          BetStatus     @default(ACTIVE)
+  enabled         Boolean       @default(true)
+  priority        Int           @default(100)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  marketProfile   MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([marketProfileId, matchType, pattern])
+  @@index([enabled, priority])
+  @@map("SlugMatchRule")
 }
 

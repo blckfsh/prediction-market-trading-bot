@@ -99,11 +99,15 @@ describe('PredictService', () => {
     predictRepository.updateBuyPositionConfig.mockResolvedValue(updatedConfig);
 
     await expect(
-      service.updateBuyPositionConfig(MarketVariant.DEFAULT, 'crypto-up-down-1', {
-        amount: 250,
-        entry: 30,
-        tradeType: 'no',
-      }),
+      service.updateBuyPositionConfig(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        {
+          amount: 250,
+          entry: 30,
+          tradeType: 'no',
+        },
+      ),
     ).resolves.toEqual(updatedConfig);
 
     expect(predictRepository.updateBuyPositionConfig).toHaveBeenCalledWith(
@@ -155,9 +159,13 @@ describe('PredictService', () => {
     predictRepository.updateSellPositionConfig.mockResolvedValue(updatedConfig);
 
     await expect(
-      service.updateSellPositionConfig(MarketVariant.DEFAULT, 'crypto-up-down-1', {
-        stopLossPercentage: 20,
-      }),
+      service.updateSellPositionConfig(
+        MarketVariant.DEFAULT,
+        'crypto-up-down-1',
+        {
+          stopLossPercentage: 20,
+        },
+      ),
     ).resolves.toEqual(updatedConfig);
 
     expect(predictRepository.updateSellPositionConfig).toHaveBeenCalledWith(
@@ -188,7 +196,7 @@ describe('PredictService', () => {
   it('creates slug match rule with defaults', async () => {
     const created = {
       id: 2,
-      marketVariant: null,
+      marketVariant: MarketVariant.CRYPTO_UP_DOWN,
       configKey: 'daily',
       matchType: 'suffix',
       pattern: 'daily',
@@ -199,17 +207,18 @@ describe('PredictService', () => {
 
     await expect(
       service.createSlugMatchRule({
-        marketVariant: null,
+        marketVariant: MarketVariant.CRYPTO_UP_DOWN,
         configKey: 'daily',
         matchType: 'suffix',
         pattern: 'daily',
       }),
     ).resolves.toEqual(created);
     expect(predictRepository.saveSlugMatchRule).toHaveBeenCalledWith({
-      marketVariant: null,
+      marketVariant: MarketVariant.CRYPTO_UP_DOWN,
       configKey: 'daily',
       matchType: 'suffix',
       pattern: 'daily',
+      status: undefined,
       enabled: true,
       priority: 100,
     });
@@ -298,4 +307,3 @@ describe('PredictService', () => {
     );
   });
 });
-

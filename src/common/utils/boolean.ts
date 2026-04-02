@@ -5,4 +5,3 @@ export function parseBooleanFlag(raw: string | undefined): boolean {
   const normalized = raw.trim().toLowerCase();
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
-

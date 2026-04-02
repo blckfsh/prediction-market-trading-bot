@@ -29,6 +29,16 @@ export class SchemaType implements SchemaDef {
                     name: "slug",
                     type: "String"
                 },
+                marketSlug: {
+                    name: "marketSlug",
+                    type: "String",
+                    optional: true
+                },
+                outcomeOnChainId: {
+                    name: "outcomeOnChainId",
+                    type: "String",
+                    optional: true
+                },
                 buyAmount: {
                     name: "buyAmount",
                     type: "Int"
@@ -75,9 +85,76 @@ export class SchemaType implements SchemaDef {
                     type: "TradeStatus"
                 }
             },
+            attributes: [
+                { name: "@@index", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketId"), ExpressionUtils.field("status"), ExpressionUtils.field("buyTimestamp")]) }] }
+            ],
             idFields: ["id"],
             uniqueFields: {
                 id: { type: "Int" }
+            }
+        },
+        MarketProfile: {
+            name: "MarketProfile",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                marketVariant: {
+                    name: "marketVariant",
+                    type: "MarketVariant"
+                },
+                configKey: {
+                    name: "configKey",
+                    type: "String"
+                },
+                createdAt: {
+                    name: "createdAt",
+                    type: "DateTime",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.call("now") }] }],
+                    default: ExpressionUtils.call("now")
+                },
+                updatedAt: {
+                    name: "updatedAt",
+                    type: "DateTime",
+                    updatedAt: true,
+                    attributes: [{ name: "@updatedAt" }]
+                },
+                buyConfig: {
+                    name: "buyConfig",
+                    type: "BuyPositionConfig",
+                    optional: true,
+                    relation: { opposite: "marketProfile" }
+                },
+                sellConfig: {
+                    name: "sellConfig",
+                    type: "SellPositionConfig",
+                    optional: true,
+                    relation: { opposite: "marketProfile" }
+                },
+                sportsBets: {
+                    name: "sportsBets",
+                    type: "SportsBet",
+                    array: true,
+                    relation: { opposite: "marketProfile" }
+                },
+                cryptoBets: {
+                    name: "cryptoBets",
+                    type: "CryptoBet",
+                    array: true,
+                    relation: { opposite: "marketProfile" }
+                }
+            },
+            attributes: [
+                { name: "@@unique", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketVariant"), ExpressionUtils.field("configKey")]) }] }
+            ],
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" },
+                marketVariant_configKey: { marketVariant: { type: "MarketVariant" }, configKey: { type: "String" } }
             }
         },
         BuyPositionConfig: {
@@ -90,13 +167,14 @@ export class SchemaType implements SchemaDef {
                     attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
                     default: ExpressionUtils.call("autoincrement")
                 },
-                marketVariant: {
-                    name: "marketVariant",
-                    type: "MarketVariant"
-                },
-                slugWithSuffix: {
-                    name: "slugWithSuffix",
-                    type: "String"
+                marketProfileId: {
+                    name: "marketProfileId",
+                    type: "Int",
+                    unique: true,
+                    attributes: [{ name: "@unique" }],
+                    foreignKeyFor: [
+                        "marketProfile"
+                    ]
                 },
                 amount: {
                     name: "amount",
@@ -108,14 +186,33 @@ export class SchemaType implements SchemaDef {
                 },
                 tradeType: {
                     name: "tradeType",
-                    type: "String",
-                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal("greater-than-no") }] }],
-                    default: "greater-than-no"
+                    type: "BuyTradeType",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal("AVG_PRICE") }] }],
+                    default: "AVG_PRICE"
+                },
+                createdAt: {
+                    name: "createdAt",
+                    type: "DateTime",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.call("now") }] }],
+                    default: ExpressionUtils.call("now")
+                },
+                updatedAt: {
+                    name: "updatedAt",
+                    type: "DateTime",
+                    updatedAt: true,
+                    attributes: [{ name: "@updatedAt" }]
+                },
+                marketProfile: {
+                    name: "marketProfile",
+                    type: "MarketProfile",
+                    attributes: [{ name: "@relation", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId")]) }, { name: "references", value: ExpressionUtils.array([ExpressionUtils.field("id")]) }, { name: "onDelete", value: ExpressionUtils.literal("Cascade") }] }],
+                    relation: { opposite: "buyConfig", fields: ["marketProfileId"], references: ["id"], onDelete: "Cascade" }
                 }
             },
             idFields: ["id"],
             uniqueFields: {
-                id: { type: "Int" }
+                id: { type: "Int" },
+                marketProfileId: { type: "Int" }
             }
         },
         SellPositionConfig: {
@@ -128,13 +225,14 @@ export class SchemaType implements SchemaDef {
                     attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
                     default: ExpressionUtils.call("autoincrement")
                 },
-                marketVariant: {
-                    name: "marketVariant",
-                    type: "MarketVariant"
-                },
-                slugWithSuffix: {
-                    name: "slugWithSuffix",
-                    type: "String"
+                marketProfileId: {
+                    name: "marketProfileId",
+                    type: "Int",
+                    unique: true,
+                    attributes: [{ name: "@unique" }],
+                    foreignKeyFor: [
+                        "marketProfile"
+                    ]
                 },
                 stopLossPercentage: {
                     name: "stopLossPercentage",
@@ -143,11 +241,30 @@ export class SchemaType implements SchemaDef {
                 amountPercentage: {
                     name: "amountPercentage",
                     type: "Int"
+                },
+                createdAt: {
+                    name: "createdAt",
+                    type: "DateTime",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.call("now") }] }],
+                    default: ExpressionUtils.call("now")
+                },
+                updatedAt: {
+                    name: "updatedAt",
+                    type: "DateTime",
+                    updatedAt: true,
+                    attributes: [{ name: "@updatedAt" }]
+                },
+                marketProfile: {
+                    name: "marketProfile",
+                    type: "MarketProfile",
+                    attributes: [{ name: "@relation", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId")]) }, { name: "references", value: ExpressionUtils.array([ExpressionUtils.field("id")]) }, { name: "onDelete", value: ExpressionUtils.literal("Cascade") }] }],
+                    relation: { opposite: "sellConfig", fields: ["marketProfileId"], references: ["id"], onDelete: "Cascade" }
                 }
             },
             idFields: ["id"],
             uniqueFields: {
-                id: { type: "Int" }
+                id: { type: "Int" },
+                marketProfileId: { type: "Int" }
             }
         },
         WalletApproval: {
@@ -184,6 +301,13 @@ export class SchemaType implements SchemaDef {
                     attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
                     default: ExpressionUtils.call("autoincrement")
                 },
+                marketProfileId: {
+                    name: "marketProfileId",
+                    type: "Int",
+                    foreignKeyFor: [
+                        "marketProfile"
+                    ]
+                },
                 keyword: {
                     name: "keyword",
                     type: "String"
@@ -191,11 +315,112 @@ export class SchemaType implements SchemaDef {
                 category: {
                     name: "category",
                     type: "String"
+                },
+                status: {
+                    name: "status",
+                    type: "BetStatus",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal("ACTIVE") }] }],
+                    default: "ACTIVE"
+                },
+                createdAt: {
+                    name: "createdAt",
+                    type: "DateTime",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.call("now") }] }],
+                    default: ExpressionUtils.call("now")
+                },
+                updatedAt: {
+                    name: "updatedAt",
+                    type: "DateTime",
+                    updatedAt: true,
+                    attributes: [{ name: "@updatedAt" }]
+                },
+                marketProfile: {
+                    name: "marketProfile",
+                    type: "MarketProfile",
+                    attributes: [{ name: "@relation", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId")]) }, { name: "references", value: ExpressionUtils.array([ExpressionUtils.field("id")]) }, { name: "onDelete", value: ExpressionUtils.literal("Cascade") }] }],
+                    relation: { opposite: "sportsBets", fields: ["marketProfileId"], references: ["id"], onDelete: "Cascade" }
                 }
             },
+            attributes: [
+                { name: "@@unique", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId"), ExpressionUtils.field("category"), ExpressionUtils.field("keyword")]) }] }
+            ],
             idFields: ["id"],
             uniqueFields: {
-                id: { type: "Int" }
+                id: { type: "Int" },
+                marketProfileId_category_keyword: { marketProfileId: { type: "Int" }, category: { type: "String" }, keyword: { type: "String" } }
+            }
+        },
+        CryptoBet: {
+            name: "CryptoBet",
+            fields: {
+                id: {
+                    name: "id",
+                    type: "Int",
+                    id: true,
+                    attributes: [{ name: "@id" }, { name: "@default", args: [{ name: "value", value: ExpressionUtils.call("autoincrement") }] }],
+                    default: ExpressionUtils.call("autoincrement")
+                },
+                marketProfileId: {
+                    name: "marketProfileId",
+                    type: "Int",
+                    foreignKeyFor: [
+                        "marketProfile"
+                    ]
+                },
+                matchType: {
+                    name: "matchType",
+                    type: "SlugMatchType"
+                },
+                pattern: {
+                    name: "pattern",
+                    type: "String"
+                },
+                status: {
+                    name: "status",
+                    type: "BetStatus",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal("ACTIVE") }] }],
+                    default: "ACTIVE"
+                },
+                enabled: {
+                    name: "enabled",
+                    type: "Boolean",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal(true) }] }],
+                    default: true
+                },
+                priority: {
+                    name: "priority",
+                    type: "Int",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal(100) }] }],
+                    default: 100
+                },
+                createdAt: {
+                    name: "createdAt",
+                    type: "DateTime",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.call("now") }] }],
+                    default: ExpressionUtils.call("now")
+                },
+                updatedAt: {
+                    name: "updatedAt",
+                    type: "DateTime",
+                    updatedAt: true,
+                    attributes: [{ name: "@updatedAt" }]
+                },
+                marketProfile: {
+                    name: "marketProfile",
+                    type: "MarketProfile",
+                    attributes: [{ name: "@relation", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId")]) }, { name: "references", value: ExpressionUtils.array([ExpressionUtils.field("id")]) }, { name: "onDelete", value: ExpressionUtils.literal("Cascade") }] }],
+                    relation: { opposite: "cryptoBets", fields: ["marketProfileId"], references: ["id"], onDelete: "Cascade" }
+                }
+            },
+            attributes: [
+                { name: "@@unique", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("marketProfileId"), ExpressionUtils.field("matchType"), ExpressionUtils.field("pattern")]) }] },
+                { name: "@@index", args: [{ name: "fields", value: ExpressionUtils.array([ExpressionUtils.field("enabled"), ExpressionUtils.field("priority")]) }] },
+                { name: "@@map", args: [{ name: "name", value: ExpressionUtils.literal("SlugMatchRule") }] }
+            ],
+            idFields: ["id"],
+            uniqueFields: {
+                id: { type: "Int" },
+                marketProfileId_matchType_pattern: { marketProfileId: { type: "Int" }, matchType: { type: "SlugMatchType" }, pattern: { type: "String" } }
             }
         }
     } as const;
@@ -217,6 +442,27 @@ export class SchemaType implements SchemaDef {
                 DEFAULT: "DEFAULT",
                 SPORTS_TEAM_MATCH: "SPORTS_TEAM_MATCH",
                 CRYPTO_UP_DOWN: "CRYPTO_UP_DOWN"
+            }
+        },
+        BuyTradeType: {
+            values: {
+                YES: "YES",
+                NO: "NO",
+                AVG_PRICE: "AVG_PRICE",
+                NA: "NA"
+            }
+        },
+        SlugMatchType: {
+            values: {
+                PREFIX: "PREFIX",
+                SUFFIX: "SUFFIX",
+                REGEX: "REGEX"
+            }
+        },
+        BetStatus: {
+            values: {
+                ACTIVE: "ACTIVE",
+                INACTIVE: "INACTIVE"
             }
         }
     } as const;

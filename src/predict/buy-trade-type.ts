@@ -1,9 +1,4 @@
-const BUY_TRADE_TYPES = [
-  'yes',
-  'no',
-  'avg-price',
-  'na',
-] as const;
+const BUY_TRADE_TYPES = ['yes', 'no', 'avg-price', 'na'] as const;
 
 type BuyTradeType = (typeof BUY_TRADE_TYPES)[number];
 

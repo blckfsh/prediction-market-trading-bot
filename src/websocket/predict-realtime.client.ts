@@ -214,7 +214,10 @@ export class RealtimeClient {
     }
   }
 
-  subscribe(topic: Channel, callback: EventCallback): { unsubscribe: () => void } {
+  subscribe(
+    topic: Channel,
+    callback: EventCallback,
+  ): { unsubscribe: () => void } {
     const topicName = this.getTopicStringFor(topic);
     const existing = this.subscriptions.get(topicName);
 
@@ -278,4 +281,3 @@ export class RealtimeClient {
 }
 
 export type { MessageResponses };
-

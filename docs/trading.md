@@ -15,12 +15,20 @@ The bot currently supports these `marketVariant` values for buy configuration:
 
 ## Core tables used by trading
 
+### `MarketProfile`
+
+Acts as the normalized parent key for strategy records.
+
+- `marketVariant`: variant-specific behavior
+- `configKey`: stable strategy key (replaces string-only joins across tables)
+- linked one-to-one to buy/sell configs
+- linked one-to-many to sports keywords and slug match rules
+
 ### `BuyPositionConfig`
 
 Used to determine whether the bot is allowed to buy and how much it should buy.
 
-- `marketVariant`: variant-specific behavior
-- `slugWithSuffix`: matching key used at runtime
+- `marketProfileId`: FK to `MarketProfile`
 - `amount`: USD budget used when building the buy order
 - `entry`: number of seconds after market creation before buys are allowed
 - `tradeType`: binary outcome selection strategy
@@ -29,6 +37,7 @@ Used to determine whether the bot is allowed to buy and how much it should buy.
 
 Used after a trade already exists.
 
+- `marketProfileId`: FK to `MarketProfile`
 - `stopLossPercentage`: sell when unrealized loss reaches this threshold
 - `amountPercentage`: how much of the position to sell
 
@@ -45,6 +54,7 @@ Used as the source of truth for bot-managed position ownership.
 
 Used only for `SPORTS_TEAM_MATCH` markets.
 
+- `marketProfileId`: FK to `MarketProfile`
 - `category`: slug prefix to match, for example `lol`
 - `keyword`: team or outcome keyword to match inside the market slug, for example `g2`
 
@@ -52,9 +62,8 @@ Used only for `SPORTS_TEAM_MATCH` markets.
 
 Used to dynamically map market slugs to a stable buy/sell config key without code changes.
 
-- `marketVariant`: optional variant scope (`null` means any variant)
-- `configKey`: key used to resolve `BuyPositionConfig.slugWithSuffix` and `SellPositionConfig.slugWithSuffix`
-- `matchType`: one of `prefix`, `suffix`, `regex`
+- `marketProfileId`: FK to `MarketProfile`
+- `matchType`: one of `prefix`, `suffix`, `regex` (stored as enum)
 - `pattern`: expression checked against the market slug
 - `enabled`: whether this rule participates in matching
 - `priority`: lower values run first

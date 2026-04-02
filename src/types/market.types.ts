@@ -1,4 +1,4 @@
-import { TradeStatus } from 'generated/prisma/client';
+import { TradeStatus } from '@prisma/client';
 
 enum MarketStatus {
   REGISTERED = 'REGISTERED',

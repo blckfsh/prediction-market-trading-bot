@@ -15,4 +15,3 @@ export interface AuthResponse {
   success: boolean;
   data: AuthData;
 }
-

@@ -2,6 +2,7 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
+  Max,
   IsOptional,
   IsString,
   Min,
@@ -13,6 +14,8 @@ import type { BuyTradeType } from 'src/predict/buy-trade-type';
 
 const SLUG_MATCH_TYPES = ['prefix', 'suffix', 'regex'] as const;
 type SlugMatchType = (typeof SLUG_MATCH_TYPES)[number];
+const BET_STATUSES = ['ACTIVE', 'INACTIVE'] as const;
+type BetStatus = (typeof BET_STATUSES)[number];
 
 class CreateBuyPositionConfigBody {
   @IsIn(API_MARKET_VARIANTS)
@@ -26,7 +29,7 @@ class CreateBuyPositionConfigBody {
   amount: number;
 
   @IsInt()
-  @Min(1)
+  @Min(0)
   entry: number;
 
   @IsOptional()
@@ -42,7 +45,7 @@ class UpdateBuyPositionConfigBody {
 
   @IsOptional()
   @IsInt()
-  @Min(1)
+  @Min(0)
   entry?: number;
 
   @IsOptional()
@@ -59,10 +62,12 @@ class CreateSellPositionConfigBody {
 
   @IsInt()
   @Min(1)
+  @Max(100)
   stopLossPercentage: number;
 
   @IsInt()
   @Min(1)
+  @Max(100)
   amountPercentage: number;
 }
 
@@ -70,18 +75,19 @@ class UpdateSellPositionConfigBody {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   stopLossPercentage?: number;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   amountPercentage?: number;
 }
 
 class CreateSlugMatchRuleBody {
-  @IsOptional()
   @IsIn(API_MARKET_VARIANTS)
-  marketVariant?: ApiMarketVariant;
+  marketVariant: ApiMarketVariant;
 
   @IsString()
   configKey: string;
@@ -91,6 +97,10 @@ class CreateSlugMatchRuleBody {
 
   @IsString()
   pattern: string;
+
+  @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
 
   @IsOptional()
   @IsBoolean()
@@ -120,6 +130,10 @@ class UpdateSlugMatchRuleBody {
   pattern?: string;
 
   @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
+
+  @IsOptional()
   @IsBoolean()
   enabled?: boolean;
 
@@ -129,6 +143,112 @@ class UpdateSlugMatchRuleBody {
   priority?: number;
 }
 
+class CreateCryptoBetBody {
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant: ApiMarketVariant;
+
+  @IsString()
+  configKey: string;
+
+  @IsIn(SLUG_MATCH_TYPES)
+  matchType: SlugMatchType;
+
+  @IsString()
+  pattern: string;
+
+  @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+}
+
+class UpdateCryptoBetBody {
+  @IsOptional()
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant?: ApiMarketVariant;
+
+  @IsOptional()
+  @IsString()
+  configKey?: string;
+
+  @IsOptional()
+  @IsIn(SLUG_MATCH_TYPES)
+  matchType?: SlugMatchType;
+
+  @IsOptional()
+  @IsString()
+  pattern?: string;
+
+  @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+}
+
+class CreateMarketProfileBody {
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant: ApiMarketVariant;
+
+  @IsString()
+  configKey: string;
+}
+
+class CreateSportsBetBody {
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant: ApiMarketVariant;
+
+  @IsString()
+  configKey: string;
+
+  @IsString()
+  category: string;
+
+  @IsString()
+  keyword: string;
+
+  @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
+}
+
+class UpdateSportsBetBody {
+  @IsOptional()
+  @IsIn(API_MARKET_VARIANTS)
+  marketVariant?: ApiMarketVariant;
+
+  @IsOptional()
+  @IsString()
+  configKey?: string;
+
+  @IsOptional()
+  @IsString()
+  category?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsIn(BET_STATUSES)
+  status?: BetStatus;
+}
+
 export {
   CreateBuyPositionConfigBody,
   UpdateBuyPositionConfigBody,
@@ -136,5 +256,10 @@ export {
   UpdateSellPositionConfigBody,
   CreateSlugMatchRuleBody,
   UpdateSlugMatchRuleBody,
+  CreateCryptoBetBody,
+  UpdateCryptoBetBody,
+  CreateMarketProfileBody,
+  CreateSportsBetBody,
+  UpdateSportsBetBody,
   SLUG_MATCH_TYPES,
 };

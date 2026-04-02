@@ -80,7 +80,9 @@ describe('PredictController', () => {
     });
 
     it('throws NotFoundException when missing', async () => {
-      predictService.getBuyPositionConfigByMarketVariant.mockResolvedValue(null);
+      predictService.getBuyPositionConfigByMarketVariant.mockResolvedValue(
+        null,
+      );
 
       await expect(
         controller.getBuyPositionConfigByMarketVariant(
@@ -155,7 +157,9 @@ describe('PredictController', () => {
     });
 
     it('throws NotFoundException when missing', async () => {
-      predictService.getSellPositionConfigByMarketVariant.mockResolvedValue(null);
+      predictService.getSellPositionConfigByMarketVariant.mockResolvedValue(
+        null,
+      );
 
       await expect(
         controller.getSellPositionConfigByMarketVariant(
@@ -256,6 +260,7 @@ describe('PredictController', () => {
         configKey: 'daily',
         matchType: 'regex',
         pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        status: undefined,
         enabled: true,
         priority: 1,
       });
@@ -285,10 +290,10 @@ describe('PredictController', () => {
         configKey: undefined,
         matchType: undefined,
         pattern: '^ethereum-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        status: undefined,
         enabled: undefined,
         priority: 2,
       });
     });
   });
 });
-

@@ -6,5 +6,9 @@
   "preset": "ts-jest/presets/default",
   "transform": {
     "^.+\\.ts$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^src/(.*)$": "<rootDir>/../src/$1",
+    "^lib/(.*)$": "<rootDir>/../lib/$1"
   }
 }
