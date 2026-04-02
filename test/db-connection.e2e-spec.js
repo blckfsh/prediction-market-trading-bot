@@ -1,7 +1,7 @@
 require('dotenv/config');
 
 const { Test } = require('@nestjs/testing');
-const { PrismaClient } = require('../generated/prisma/client');
+const { PrismaClient } = require('@prisma/client');
 const { Pool } = require('pg');
 const { PrismaPg } = require('@prisma/adapter-pg');
 

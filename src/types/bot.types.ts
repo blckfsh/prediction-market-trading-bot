@@ -8,4 +8,3 @@ export type RefreshLoopState = {
 export type RefreshLoopDeps = {
   configService: ConfigService;
 };
-

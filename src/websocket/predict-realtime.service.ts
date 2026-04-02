@@ -28,7 +28,8 @@ export class PredictRealtimeService implements OnModuleDestroy {
       this.configService.get<string>('PREDICT_WS_MAX_ATTEMPTS') ?? 5,
     );
     const maxRetryInterval = Number(
-      this.configService.get<string>('PREDICT_WS_MAX_RETRY_INTERVAL_MS') ?? 30000,
+      this.configService.get<string>('PREDICT_WS_MAX_RETRY_INTERVAL_MS') ??
+        30000,
     );
 
     this.client = new RealtimeClient(
@@ -88,4 +89,3 @@ export class PredictRealtimeService implements OnModuleDestroy {
     }, intervalMs);
   }
 }
-

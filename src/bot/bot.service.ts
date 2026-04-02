@@ -5,20 +5,9 @@ import {
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import {
-  formatEther,
-  formatUnits,
-  Wallet,
-} from 'ethers';
-import {
-  OrderBuilder,
-  ChainId,
-} from '@predictdotfun/sdk';
-import {
-  MarketVariant,
-  BuyPositionConfig,
-  SellPositionConfig,
-} from 'generated/prisma/client';
+import { formatEther, formatUnits, Wallet } from 'ethers';
+import { OrderBuilder, ChainId } from '@predictdotfun/sdk';
+import { MarketVariant } from '@prisma/client';
 import { BalanceResponse } from 'src/types/balance.types';
 import {
   Category,
@@ -36,11 +25,13 @@ import {
   MarketDataResponse,
   Tag,
 } from 'src/types/market.types';
+import { AuthMessageResponse, AuthResponse } from 'src/types/auth.types';
 import {
-  AuthMessageResponse,
-  AuthResponse,
-} from 'src/types/auth.types';
-import { PredictRepository } from 'src/predict/predict.repository';
+  PredictRepository,
+  type BuyPositionConfigRecord,
+  type SellPositionConfigRecord,
+  type SlugMatchRuleRecord,
+} from '../predict/predict.repository';
 import { fetchWithRetry } from 'src/common/utils/http';
 import {
   getTopicLabel as getTopicLabelHelper,
@@ -71,7 +62,6 @@ import {
   normalizeBuyTradeType,
   type BuyTradeType,
 } from 'src/predict/buy-trade-type';
-import type { SlugMatchRuleRecord } from 'src/predict/predict.repository';
 
 const CATEGORY_FETCH_FIRST = 100;
 const CATEGORY_FETCH_SORT = 'VOLUME_24H_DESC';
@@ -90,11 +80,18 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   private token: string | null = null;
   private categories: Category[] = [];
   private positions: Position[] = [];
-  private buyPositionConfigsByKey = new Map<string, BuyPositionConfig>();
-  private sellPositionConfigsByKey = new Map<string, SellPositionConfig>();
+  private buyPositionConfigsByKey = new Map<string, BuyPositionConfigRecord>();
+  private sellPositionConfigsByKey = new Map<
+    string,
+    SellPositionConfigRecord
+  >();
   private slugMatchRules: SlugMatchRuleRecord[] = [];
-  private sportsBets: Array<{ id: number; keyword: string; category: string }> =
-    [];
+  private sportsBets: Array<{
+    id: number;
+    keyword: string;
+    category: string;
+    status?: 'ACTIVE' | 'INACTIVE';
+  }> = [];
   private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
   private readonly subscribedOrderbooks = new Set<number>();
   private readonly subscribedPriceFeeds = new Set<number>();
@@ -125,6 +122,13 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     private readonly redeemService: RedeemService,
     private readonly predictService: PredictService,
   ) {}
+
+  private buildVariantConfigMapKey(
+    marketVariant: MarketVariant,
+    configKey: string,
+  ): string {
+    return `${marketVariant}::${buildBuyConfigKey(configKey)}`;
+  }
 
   async onModuleInit() {
     if (!isBotEnabled(this.configService)) {
@@ -262,27 +266,33 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
         try {
           if (position.market.isNegRisk) {
-            const negRiskResult = await this.redeemService.redeemNegRiskPosition({
-              orderBuilder: this.orderBuilder!,
-              conditionId: position.market.conditionId,
-              indexSet,
-              isNegRisk: position.market.isNegRisk,
-              isYieldBearing: position.market.isYieldBearing,
-              amount: BigInt(position.amount),
-            });
+            const negRiskResult =
+              await this.redeemService.redeemNegRiskPosition({
+                orderBuilder: this.orderBuilder!,
+                conditionId: position.market.conditionId,
+                indexSet,
+                isNegRisk: position.market.isNegRisk,
+                isYieldBearing: position.market.isYieldBearing,
+                amount: BigInt(position.amount),
+              });
 
             if (negRiskResult.success) {
-              this.logger.log(`Redeemed negative risk position for market ${position.market.id}.`);
-              this.logger.log(`Transaction hash: ${negRiskResult.receipt?.toJSON().transactionHash}`);
+              this.logger.log(
+                `Redeemed negative risk position for market ${position.market.id}.`,
+              );
+              this.logger.log(
+                `Transaction hash: ${negRiskResult.receipt?.toJSON().transactionHash}`,
+              );
             }
           } else {
-            const standardResult = await this.redeemService.redeemStandardPosition({
-              orderBuilder: this.orderBuilder!,
-              conditionId: position.market.conditionId,
-              indexSet,
-              isNegRisk: position.market.isNegRisk,
-              isYieldBearing: position.market.isYieldBearing,
-            });
+            const standardResult =
+              await this.redeemService.redeemStandardPosition({
+                orderBuilder: this.orderBuilder!,
+                conditionId: position.market.conditionId,
+                indexSet,
+                isNegRisk: position.market.isNegRisk,
+                isYieldBearing: position.market.isYieldBearing,
+              });
 
             if (standardResult.success) {
               this.logger.log(
@@ -416,17 +426,24 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     const buyConfigs = await this.predictRepository.getAllBuyPositionConfigs();
     this.buyPositionConfigsByKey = new Map(
       buyConfigs.map((config) => [
-        buildBuyConfigKey(config.slugWithSuffix),
+        this.buildVariantConfigMapKey(
+          config.marketVariant,
+          config.slugWithSuffix,
+        ),
         config,
       ]),
     );
   }
 
   private async initializeSellPositionConfigs() {
-    const sellConfigs = await this.predictRepository.getAllSellPositionConfigs();
+    const sellConfigs =
+      await this.predictRepository.getAllSellPositionConfigs();
     this.sellPositionConfigsByKey = new Map(
       sellConfigs.map((config) => [
-        buildBuyConfigKey(config.slugWithSuffix),
+        this.buildVariantConfigMapKey(
+          config.marketVariant,
+          config.slugWithSuffix,
+        ),
         config,
       ]),
     );
@@ -445,24 +462,25 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
    **************************************************** */
 
   private async refreshCategoriesAndSubscribe(): Promise<void> {
-    const { newMarketsCount, error } = await refreshCategoriesAndSubscribeHelper(
-      this.categoryRefreshState,
-      {
-        list: this.categories,
-        set: (next) => {
-          this.categories = next;
+    const { newMarketsCount, error } =
+      await refreshCategoriesAndSubscribeHelper(
+        this.categoryRefreshState,
+        {
+          list: this.categories,
+          set: (next) => {
+            this.categories = next;
+          },
         },
-      },
-      () => this.getDefaultMarkets(),
-      (data) => filterAndSortSupportedCategories(data),
-      (marketId) => this.subscribeToOrderbook(marketId),
-      async () => {
-        this.logger.log(
-          `Refreshed categories @ ${new Date().toISOString()}; logging tables.`,
-        );
-        await this.logCategoryTables({ subscribeToMarkets: false });
-      },
-    );
+        () => this.getDefaultMarkets(),
+        (data) => filterAndSortSupportedCategories(data),
+        (marketId) => this.subscribeToOrderbook(marketId),
+        async () => {
+          this.logger.log(
+            `Refreshed categories @ ${new Date().toISOString()}; logging tables.`,
+          );
+          await this.logCategoryTables({ subscribeToMarkets: false });
+        },
+      );
     if (error) {
       this.logger.warn(`Failed to refresh categories: ${error}`);
       return;
@@ -758,7 +776,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           marketTradeLastAttemptAt: this.marketTradeLastAttemptAt,
           positions: this.positions,
           getMarketSlugById: this.getMarketSlugById.bind(this),
-          getTradeAmountForMarketSlug: this.getTradeAmountForMarketSlug.bind(this),
+          getTradeAmountForMarketSlug:
+            this.getTradeAmountForMarketSlug.bind(this),
           getEntrySecondsForMarketSlug:
             this.getEntrySecondsForMarketSlug.bind(this),
           getBuyTradeTypeForMarketSlug:
@@ -881,9 +900,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   async getBuyPositionConfigByMarketVariant(
     marketVariant: MarketVariant,
     slugWithSuffix: string,
-  ): Promise<BuyPositionConfig | null> {
+  ): Promise<BuyPositionConfigRecord | null> {
     const cached = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(slugWithSuffix),
+      this.buildVariantConfigMapKey(marketVariant, slugWithSuffix),
     );
     if (cached) {
       return cached;
@@ -959,7 +978,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         ...cryptoCategories,
       ];
       const dedupedCategories = Array.from(
-        new Map(combinedCategories.map((category) => [category.id, category])).values(),
+        new Map(
+          combinedCategories.map((category) => [category.id, category]),
+        ).values(),
       );
       data = {
         success: true,
@@ -1281,21 +1302,24 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     slug: string,
     marketVariant?: MarketVariant,
   ): string | null {
-    for (const rule of this.slugMatchRules) {
-      if (rule.marketVariant && marketVariant && rule.marketVariant !== marketVariant) {
-        continue;
-      }
-      if (rule.marketVariant && !marketVariant) {
-        continue;
-      }
-      if (this.matchesSlugRule(slug, rule)) {
-        return rule.configKey;
+    if (marketVariant) {
+      for (const rule of this.slugMatchRules) {
+        if (rule.marketVariant !== marketVariant) {
+          continue;
+        }
+        if (this.matchesSlugRule(slug, rule)) {
+        if (rule.status === 'INACTIVE') {
+          this.logger.warn(
+            `Skipping slug ${slug}. Matched inactive crypto bet rule ${rule.id}.`,
+          );
+          return null;
+        }
+          return rule.configKey;
+        }
       }
     }
     const hasCryptoRules = this.slugMatchRules.some(
-      (rule) =>
-        rule.marketVariant === null ||
-        rule.marketVariant === MarketVariant.CRYPTO_UP_DOWN,
+      (rule) => rule.marketVariant === MarketVariant.CRYPTO_UP_DOWN,
     );
     if (marketVariant === MarketVariant.CRYPTO_UP_DOWN && hasCryptoRules) {
       return null;
@@ -1341,7 +1365,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return 1;
     }
     const buyConfig = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(supportedKeyword),
+      this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
     );
     if (!buyConfig) {
       this.logger.warn(
@@ -1386,7 +1410,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     const buyConfig = this.buyPositionConfigsByKey.get(
-      buildBuyConfigKey(supportedKeyword),
+      this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
     );
     if (!buyConfig) {
       this.logger.warn(
@@ -1399,12 +1423,17 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private getBuyTradeTypeForMarketSlug(slug: string): BuyTradeType {
     const category = this.getCategoryBySlug(slug);
+    if (!category) {
+      return normalizeBuyTradeType(undefined);
+    }
     const supportedKeyword = this.resolveSupportedSlugKeyword(
       slug,
-      category?.marketVariant,
+      category.marketVariant,
     );
     const buyConfig = supportedKeyword
-      ? this.buyPositionConfigsByKey.get(buildBuyConfigKey(supportedKeyword))
+      ? this.buyPositionConfigsByKey.get(
+          this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
+        )
       : undefined;
     if (category?.marketVariant === MarketVariant.SPORTS_TEAM_MATCH) {
       return normalizeBuyTradeType(buyConfig?.tradeType, {
@@ -1429,22 +1458,35 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       if (!category || !keyword) {
         return false;
       }
-      const categoryPrefix = category.endsWith('-')
-        ? category
-        : `${category}-`;
+      const categoryPrefix = category.endsWith('-') ? category : `${category}-`;
       return (
         normalizedSlug.startsWith(categoryPrefix) &&
         normalizedSlug.includes(keyword)
       );
     });
+    if (match && match.status === 'INACTIVE') {
+      this.logger.warn(
+        `Skipping slug ${slug}. Matched inactive sports bet ${match.id}.`,
+      );
+      return null;
+    }
     return match ? match.keyword.trim() : null;
   }
 
   private getStopLossPercentageForMarketSlug(slug: string): number | null {
     const category = this.getCategoryBySlug(slug);
+    if (!category) {
+      return null;
+    }
+    if (
+      category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH &&
+      !this.hasSportsBetKeywordForSlug(slug)
+    ) {
+      return null;
+    }
     const supportedKeyword = this.resolveSupportedSlugKeyword(
       slug,
-      category?.marketVariant,
+      category.marketVariant,
     );
     if (!supportedKeyword) {
       this.logger.warn(
@@ -1453,7 +1495,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     const sellConfig = this.sellPositionConfigsByKey.get(
-      buildBuyConfigKey(supportedKeyword),
+      this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
     );
     if (!sellConfig) {
       this.logger.warn(
@@ -1466,9 +1508,18 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private getAmountPercentageForMarketSlug(slug: string): number | null {
     const category = this.getCategoryBySlug(slug);
+    if (!category) {
+      return null;
+    }
+    if (
+      category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH &&
+      !this.hasSportsBetKeywordForSlug(slug)
+    ) {
+      return null;
+    }
     const supportedKeyword = this.resolveSupportedSlugKeyword(
       slug,
-      category?.marketVariant,
+      category.marketVariant,
     );
     if (!supportedKeyword) {
       this.logger.warn(
@@ -1477,7 +1528,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return null;
     }
     const sellConfig = this.sellPositionConfigsByKey.get(
-      buildBuyConfigKey(supportedKeyword),
+      this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
     );
     if (!sellConfig) {
       this.logger.warn(

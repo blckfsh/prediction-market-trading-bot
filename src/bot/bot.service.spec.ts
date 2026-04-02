@@ -18,12 +18,13 @@ import {
   SaveMarketTradeInput,
 } from 'src/types/market.types';
 import { RealtimeTopic } from 'src/types/websocket.types';
-import { TradeStatus } from 'generated/prisma/client';
+import { TradeStatus } from '@prisma/client';
 import { REFERRAL_CODE } from 'src/common/helpers/constants';
 
 jest.mock(
-  'generated/prisma/client',
+  '@prisma/client',
   () => ({
+    PrismaClient: class {},
     TradeStatus: { BOUGHT: 'BOUGHT', SOLD: 'SOLD' },
     MarketVariant: {
       DEFAULT: 'DEFAULT',
@@ -31,14 +32,6 @@ jest.mock(
       CRYPTO_UP_DOWN: 'CRYPTO_UP_DOWN',
     },
     Trade: class {},
-  }),
-  { virtual: true },
-);
-
-jest.mock(
-  '@prisma/client',
-  () => ({
-    PrismaClient: class {},
   }),
   { virtual: true },
 );
@@ -260,12 +253,16 @@ describe('BotService', () => {
     expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain(
       'marketVariant=SPORTS_TEAM_MATCH',
     );
-    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('tagIds=%5B84%5D');
+    expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain(
+      'tagIds=%5B84%5D',
+    );
     expect((global.fetch as jest.Mock).mock.calls[1][0]).toContain('first=100');
     expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain(
       'marketVariant=CRYPTO_UP_DOWN',
     );
-    expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain('tagIds=%5B2%5D');
+    expect((global.fetch as jest.Mock).mock.calls[2][0]).toContain(
+      'tagIds=%5B2%5D',
+    );
     expect(result.data.map(({ slug }) => slug)).toEqual([
       'lol-test-match',
       'btc-usd-up-down-2026-03-09-12-00-daily',
@@ -793,15 +790,13 @@ describe('BotService', () => {
     ];
 
     const repo = predictRepository as any;
-    repo.getTradeByMarketId = jest
-      .fn()
-      .mockResolvedValueOnce({
-        id: 1,
-        status: TradeStatus.BOUGHT,
-        slug: 'open-cat::outcome:2',
-        buyAmount: 100,
-        buyAmountInUsd: 100,
-      });
+    repo.getTradeByMarketId = jest.fn().mockResolvedValueOnce({
+      id: 1,
+      status: TradeStatus.BOUGHT,
+      slug: 'open-cat::outcome:2',
+      buyAmount: 100,
+      buyAmountInUsd: 100,
+    });
 
     const sellPositionSpy = jest
       .spyOn(tradeService as any, 'sellPosition')

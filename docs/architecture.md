@@ -9,7 +9,7 @@ This document describes how the prediction market trading bot is structured and 
 - **PredictService** (`src/predict/predict.service.ts`): Handles referral setup, approvals, and config-oriented service methods.
 - **PredictRepository** (`src/predict/predict.repository.ts`): Prisma data access for trades, wallet approvals, and strategy config records.
 - **PredictController** (`src/predict/predict.controller.ts`): REST endpoints for creating/updating buy/sell configuration.
-- **Data layer**: PostgreSQL via Prisma (`Trade`, `BuyPositionConfig`, `SellPositionConfig`, `WalletApproval`, `SportsBet`).
+- **Data layer**: PostgreSQL via Prisma (`MarketProfile`, `Trade`, `BuyPositionConfig`, `SellPositionConfig`, `SlugMatchRule`, `WalletApproval`, `SportsBet`).
 
 ## Architecture diagram
 
@@ -33,11 +33,13 @@ flowchart LR
   end
 
   subgraph DB[PostgreSQL via Prisma]
+    TBL0[(MarketProfile)]
     TBL1[(Trade)]
     TBL2[(BuyPositionConfig)]
     TBL3[(SellPositionConfig)]
-    TBL4[(WalletApproval)]
-    TBL5[(SportsBet)]
+    TBL4[(SlugMatchRule)]
+    TBL5[(WalletApproval)]
+    TBL6[(SportsBet)]
   end
 
   PAPI --> BOT
@@ -56,11 +58,13 @@ flowchart LR
 
   CTRL --> PRED
 
+  REPO --> TBL0
   REPO --> TBL1
   REPO --> TBL2
   REPO --> TBL3
   REPO --> TBL4
   REPO --> TBL5
+  REPO --> TBL6
 ```
 
 ## Sequence diagram (short worker flow)

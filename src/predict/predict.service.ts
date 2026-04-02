@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import {
-  BuyPositionConfig,
-  SellPositionConfig,
-  WalletApproval,
-} from 'generated/prisma/client';
+import { WalletApproval } from '@prisma/client';
 import { MarketVariant } from 'lib/zenstack/models';
 import { PredictRepository } from './predict.repository';
-import type { SlugMatchRuleRecord } from './predict.repository';
+import type {
+  BuyPositionConfigRecord,
+  MarketProfileRecord,
+  SportsBetRecord,
+  SellPositionConfigRecord,
+  SlugMatchRuleRecord,
+} from './predict.repository';
 import { REFERRAL_CODE } from 'src/common/helpers/constants';
 import { OrderBuilder } from '@predictdotfun/sdk';
 import { SetApprovalsResult } from '@predictdotfun/sdk';
@@ -21,7 +23,7 @@ export class PredictService {
   async getBuyPositionConfigByMarketVariant(
     marketVariant: MarketVariant,
     slugWithSuffix: string,
-  ): Promise<BuyPositionConfig | null> {
+  ): Promise<BuyPositionConfigRecord | null> {
     return this.predictRepository.getBuyPositionConfigByMarketVariant(
       marketVariant,
       slugWithSuffix,
@@ -34,7 +36,7 @@ export class PredictService {
     amount: number,
     entry: number,
     tradeType?: BuyTradeType,
-  ): Promise<BuyPositionConfig> {
+  ): Promise<BuyPositionConfigRecord> {
     return this.predictRepository.saveBuyPositionConfig(
       marketVariant,
       slugWithSuffix,
@@ -52,7 +54,7 @@ export class PredictService {
       entry?: number;
       tradeType?: BuyTradeType;
     },
-  ): Promise<BuyPositionConfig> {
+  ): Promise<BuyPositionConfigRecord> {
     return this.predictRepository.updateBuyPositionConfig(
       marketVariant,
       slugWithSuffix,
@@ -63,7 +65,7 @@ export class PredictService {
   async getSellPositionConfigByMarketVariant(
     marketVariant: MarketVariant,
     slugWithSuffix: string,
-  ): Promise<SellPositionConfig | null> {
+  ): Promise<SellPositionConfigRecord | null> {
     return this.predictRepository.getSellPositionConfigByMarketVariant(
       marketVariant,
       slugWithSuffix,
@@ -75,7 +77,7 @@ export class PredictService {
     slugWithSuffix: string,
     stopLossPercentage: number,
     amountPercentage: number,
-  ): Promise<SellPositionConfig> {
+  ): Promise<SellPositionConfigRecord> {
     return this.predictRepository.saveSellPositionConfig(
       marketVariant,
       slugWithSuffix,
@@ -91,7 +93,7 @@ export class PredictService {
       stopLossPercentage?: number;
       amountPercentage?: number;
     },
-  ): Promise<SellPositionConfig> {
+  ): Promise<SellPositionConfigRecord> {
     return this.predictRepository.updateSellPositionConfig(
       marketVariant,
       slugWithSuffix,
@@ -103,11 +105,16 @@ export class PredictService {
     return this.predictRepository.getAllSlugMatchRules();
   }
 
+  async getAllCryptoBets(): Promise<SlugMatchRuleRecord[]> {
+    return this.predictRepository.getAllSlugMatchRules();
+  }
+
   async createSlugMatchRule(params: {
-    marketVariant: MarketVariant | null;
+    marketVariant: MarketVariant;
     configKey: string;
     matchType: 'prefix' | 'suffix' | 'regex';
     pattern: string;
+    status?: 'ACTIVE' | 'INACTIVE';
     enabled?: boolean;
     priority?: number;
   }): Promise<SlugMatchRuleRecord> {
@@ -116,6 +123,7 @@ export class PredictService {
       configKey: params.configKey,
       matchType: params.matchType,
       pattern: params.pattern,
+      status: params.status,
       enabled: params.enabled ?? true,
       priority: params.priority ?? 100,
     });
@@ -124,15 +132,81 @@ export class PredictService {
   async updateSlugMatchRule(
     id: number,
     updates: {
-      marketVariant?: MarketVariant | null;
+      marketVariant?: MarketVariant;
       configKey?: string;
       matchType?: 'prefix' | 'suffix' | 'regex';
       pattern?: string;
+      status?: 'ACTIVE' | 'INACTIVE';
       enabled?: boolean;
       priority?: number;
     },
   ): Promise<SlugMatchRuleRecord> {
     return this.predictRepository.updateSlugMatchRule(id, updates);
+  }
+
+  async createCryptoBet(params: {
+    marketVariant: MarketVariant;
+    configKey: string;
+    matchType: 'prefix' | 'suffix' | 'regex';
+    pattern: string;
+    status?: 'ACTIVE' | 'INACTIVE';
+    enabled?: boolean;
+    priority?: number;
+  }): Promise<SlugMatchRuleRecord> {
+    return this.createSlugMatchRule(params);
+  }
+
+  async updateCryptoBet(
+    id: number,
+    updates: {
+      marketVariant?: MarketVariant;
+      configKey?: string;
+      matchType?: 'prefix' | 'suffix' | 'regex';
+      pattern?: string;
+      status?: 'ACTIVE' | 'INACTIVE';
+      enabled?: boolean;
+      priority?: number;
+    },
+  ): Promise<SlugMatchRuleRecord> {
+    return this.updateSlugMatchRule(id, updates);
+  }
+
+  async getAllMarketProfiles(): Promise<MarketProfileRecord[]> {
+    return this.predictRepository.getAllMarketProfiles();
+  }
+
+  async createMarketProfile(
+    marketVariant: MarketVariant,
+    configKey: string,
+  ): Promise<MarketProfileRecord> {
+    return this.predictRepository.saveMarketProfile(marketVariant, configKey);
+  }
+
+  async getAllSportsBets(): Promise<SportsBetRecord[]> {
+    return this.predictRepository.getAllSportsBets();
+  }
+
+  async createSportsBet(params: {
+    marketVariant: MarketVariant;
+    configKey: string;
+    category: string;
+    keyword: string;
+    status?: 'ACTIVE' | 'INACTIVE';
+  }): Promise<SportsBetRecord> {
+    return this.predictRepository.saveSportsBet(params);
+  }
+
+  async updateSportsBet(
+    id: number,
+    updates: {
+      marketVariant?: MarketVariant;
+      configKey?: string;
+      category?: string;
+      keyword?: string;
+      status?: 'ACTIVE' | 'INACTIVE';
+    },
+  ): Promise<SportsBetRecord> {
+    return this.predictRepository.updateSportsBet(id, updates);
   }
 
   async setReferralCode(params: {
@@ -216,9 +290,8 @@ export class PredictService {
   ): Promise<WalletApproval | null> {
     let walletApproval: WalletApproval | null = null;
     try {
-      walletApproval = await this.predictRepository.saveWalletApprovals(
-        predictAccount,
-      );
+      walletApproval =
+        await this.predictRepository.saveWalletApprovals(predictAccount);
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to save wallet approvals: ${error.message}`);

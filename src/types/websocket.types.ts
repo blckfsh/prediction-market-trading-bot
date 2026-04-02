@@ -74,9 +74,7 @@ export interface AssetPriceUpdateChannel {
 }
 
 export type Channel = Pretty<
-  | PredictOrderbookChannel
-  | PredictWalletEventsChannel
-  | AssetPriceUpdateChannel
+  PredictOrderbookChannel | PredictWalletEventsChannel | AssetPriceUpdateChannel
 >;
 
 export enum RealtimeTopic {
@@ -107,7 +105,10 @@ export type InternalServerError = {
   code: 'internal_server_error';
   message?: string;
 };
-export type InvalidCredentials = { code: 'invalid_credentials'; message?: string };
+export type InvalidCredentials = {
+  code: 'invalid_credentials';
+  message?: string;
+};
 export type UnsupportedContract = {
   code: 'unsupported_contract';
   message?: string;
@@ -148,9 +149,10 @@ export type WSError =
 export type TopicName = string;
 
 export type EventCallback = (
-  arg: { err?: null; data: MessageResponses['data'] } | {
-    err: WSError;
-    data?: null;
-  },
+  arg:
+    | { err?: null; data: MessageResponses['data'] }
+    | {
+        err: WSError;
+        data?: null;
+      },
 ) => void;
-

@@ -17,9 +17,7 @@ export function getDateKey(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-export function getAutoTradeIntervalMs(
-  configService: ConfigService,
-): number {
+export function getAutoTradeIntervalMs(configService: ConfigService): number {
   const raw = configService.get<string>('PREDICT_WS_AUTO_TRADE_INTERVAL_MS');
   if (!raw || raw.trim() === '') {
     return AUTO_TRADE_INTERVAL_MS;
@@ -147,13 +145,11 @@ export function isWebsocketAutoTradeEnabled(
   return normalized === 'true' || normalized === '1' || normalized === 'yes';
 }
 
-export function getChosenOutcomeIndexByTradeType(
-  params: {
-    tradeType: BuyTradeType;
-    yesBuyPrice: number;
-    noBuyPrice: number;
-  },
-): 0 | 1 | null {
+export function getChosenOutcomeIndexByTradeType(params: {
+  tradeType: BuyTradeType;
+  yesBuyPrice: number;
+  noBuyPrice: number;
+}): 0 | 1 | null {
   const { tradeType, yesBuyPrice, noBuyPrice } = params;
   switch (tradeType) {
     case 'yes':
@@ -266,7 +262,10 @@ export async function getUnrealizedPnlUsdForToday(params: {
       }
       const entryValueUsd = Number(trade.buyAmountInUsd);
       const currentValueUsd = Number(position.valueUsd);
-      if (!Number.isFinite(entryValueUsd) || !Number.isFinite(currentValueUsd)) {
+      if (
+        !Number.isFinite(entryValueUsd) ||
+        !Number.isFinite(currentValueUsd)
+      ) {
         return 0;
       }
       return currentValueUsd - entryValueUsd;
@@ -279,13 +278,11 @@ export async function shouldHaltTradingForDay(params: {
   configService: ConfigService;
   dailyRealizedPnlUsdByDate: Map<string, number>;
   positions?: Position[];
-  getUnrealizedPnlUsdForToday?: (
-    params: {
-      positions: Position[];
-      todayKey: string;
-      getTradeByMarketId: (marketId: number) => Promise<TradeEntry | null>;
-    },
-  ) => Promise<number>;
+  getUnrealizedPnlUsdForToday?: (params: {
+    positions: Position[];
+    todayKey: string;
+    getTradeByMarketId: (marketId: number) => Promise<TradeEntry | null>;
+  }) => Promise<number>;
   getTradeByMarketId?: (marketId: number) => Promise<TradeEntry | null>;
 }): Promise<{
   shouldHalt: boolean;
@@ -310,8 +307,7 @@ export async function shouldHaltTradingForDay(params: {
   const maxLoss = Number(rawMaxLoss);
   const profitLimit =
     Number.isFinite(maxProfit) && maxProfit > 0 ? maxProfit : null;
-  const lossLimit =
-    Number.isFinite(maxLoss) && maxLoss > 0 ? maxLoss : null;
+  const lossLimit = Number.isFinite(maxLoss) && maxLoss > 0 ? maxLoss : null;
   if (profitLimit === null && lossLimit === null) {
     return { shouldHalt: false };
   }
@@ -351,4 +347,3 @@ export async function shouldHaltTradingForDay(params: {
   }
   return { shouldHalt: false };
 }
-

@@ -13,7 +13,7 @@ import {
   SaveMarketTradeInput,
   TradeStrategy,
 } from 'src/types/market.types';
-import { Trade, TradeStatus } from 'generated/prisma/client';
+import { Trade, TradeStatus } from '@prisma/client';
 import { PredictRepository } from 'src/predict/predict.repository';
 import { getComplement, normalizeDepth } from 'src/common/utils/orderbook';
 import { MIN_PROFIT_USD } from 'src/common/helpers/constants';
@@ -45,7 +45,10 @@ export class TradeService {
     private readonly configService: ConfigService,
   ) {}
 
-  private buildManagedTradeSlug(slug: string, outcomeOnChainId: string): string {
+  private buildManagedTradeSlug(
+    slug: string,
+    outcomeOnChainId: string,
+  ): string {
     return `${slug}${TradeService.MANAGED_TRADE_SLUG_SEPARATOR}${outcomeOnChainId}`;
   }
 
@@ -55,7 +58,10 @@ export class TradeService {
     if (!marketSlug || !outcomeOnChainId) {
       return false;
     }
-    const expectedSlug = this.buildManagedTradeSlug(marketSlug, outcomeOnChainId);
+    const expectedSlug = this.buildManagedTradeSlug(
+      marketSlug,
+      outcomeOnChainId,
+    );
     return trade.slug === expectedSlug;
   }
 
@@ -400,7 +406,9 @@ export class TradeService {
       throw new Error('Failed to create order: Unknown error');
     } finally {
       if (createOrderResponse?.success && createOrderResponse.data?.orderId) {
-        this.logger.log(`Order created, id: ${createOrderResponse.data.orderId}`);
+        this.logger.log(
+          `Order created, id: ${createOrderResponse.data.orderId}`,
+        );
       }
     }
 
@@ -483,8 +491,7 @@ export class TradeService {
       }
       const amount = getTradeAmountForMarketSlug(slug);
       const buyTradeType = getBuyTradeTypeForMarketSlug(slug);
-      const sportsBetKeyword =
-        getSportsBetKeywordForMarketSlug?.(slug) ?? null;
+      const sportsBetKeyword = getSportsBetKeywordForMarketSlug?.(slug) ?? null;
       const marketTrade: SaveMarketTradeInput = {
         marketId,
         slug,

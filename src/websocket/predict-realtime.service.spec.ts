@@ -120,4 +120,3 @@ describe('PredictRealtimeService', () => {
     expect(mockClient.refreshSubscriptions).toHaveBeenCalled();
   });
 });
-

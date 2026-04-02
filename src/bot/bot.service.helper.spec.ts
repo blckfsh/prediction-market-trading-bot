@@ -44,10 +44,9 @@ describe('filterAndSortSupportedCategories', () => {
       ),
     ];
 
-    expect(filterAndSortSupportedCategories(categories).map(({ slug }) => slug)).toEqual([
-      'crypto-market',
-      'sports-market',
-    ]);
+    expect(
+      filterAndSortSupportedCategories(categories).map(({ slug }) => slug),
+    ).toEqual(['crypto-market', 'sports-market']);
   });
 
   it('sorts supported categories by startsAt descending', () => {
@@ -64,9 +63,8 @@ describe('filterAndSortSupportedCategories', () => {
       ),
     ];
 
-    expect(filterAndSortSupportedCategories(categories).map(({ slug }) => slug)).toEqual([
-      'newer-sports',
-      'older-crypto',
-    ]);
+    expect(
+      filterAndSortSupportedCategories(categories).map(({ slug }) => slug),
+    ).toEqual(['newer-sports', 'older-crypto']);
   });
 });

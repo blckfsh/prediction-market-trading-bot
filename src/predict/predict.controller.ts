@@ -12,10 +12,15 @@ import {
 import { PredictService } from 'src/predict/predict.service';
 import {
   CreateBuyPositionConfigBody,
+  CreateCryptoBetBody,
+  CreateMarketProfileBody,
   CreateSellPositionConfigBody,
+  CreateSportsBetBody,
   CreateSlugMatchRuleBody,
+  UpdateCryptoBetBody,
   UpdateBuyPositionConfigBody,
   UpdateSellPositionConfigBody,
+  UpdateSportsBetBody,
   UpdateSlugMatchRuleBody,
 } from 'src/dto/trade-config.dto';
 import { AuthGuard } from 'src/common/guard/auth.guard';
@@ -23,6 +28,55 @@ import { normalizeMarketVariant } from 'src/predict/predict.market-variant';
 
 @Controller('predict')
 export class PredictController {
+  @Get('market-profiles')
+  async getAllMarketProfiles() {
+    return this.predictService.getAllMarketProfiles();
+  }
+
+  @Post('market-profile')
+  @UseGuards(AuthGuard)
+  async createMarketProfile(@Body() body: CreateMarketProfileBody) {
+    return this.predictService.createMarketProfile(
+      normalizeMarketVariant(body.marketVariant),
+      body.configKey,
+    );
+  }
+
+  @Get('sports-bets')
+  async getAllSportsBets() {
+    return this.predictService.getAllSportsBets();
+  }
+
+  @Post('sports-bet')
+  @UseGuards(AuthGuard)
+  async createSportsBet(@Body() body: CreateSportsBetBody) {
+    return this.predictService.createSportsBet({
+      marketVariant: normalizeMarketVariant(body.marketVariant),
+      configKey: body.configKey,
+      category: body.category,
+      keyword: body.keyword,
+      status: body.status,
+    });
+  }
+
+  @Patch('sports-bet/:id')
+  @UseGuards(AuthGuard)
+  async updateSportsBet(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateSportsBetBody,
+  ) {
+    return this.predictService.updateSportsBet(id, {
+      marketVariant:
+        body.marketVariant !== undefined
+          ? normalizeMarketVariant(body.marketVariant)
+          : undefined,
+      configKey: body.configKey,
+      category: body.category,
+      keyword: body.keyword,
+      status: body.status,
+    });
+  }
+
   constructor(private readonly predictService: PredictService) {}
 
   @Get('buy-position-config/:marketVariant/:slugWithSuffix')
@@ -127,19 +181,20 @@ export class PredictController {
 
   @Get('slug-match-rules')
   async getAllSlugMatchRules() {
+    // Backward-compatible alias for crypto-bets
     return this.predictService.getAllSlugMatchRules();
   }
 
   @Post('slug-match-rule')
   @UseGuards(AuthGuard)
   async createSlugMatchRule(@Body() body: CreateSlugMatchRuleBody) {
+    // Backward-compatible alias for crypto-bet create
     return this.predictService.createSlugMatchRule({
-      marketVariant: body.marketVariant
-        ? normalizeMarketVariant(body.marketVariant)
-        : null,
+      marketVariant: normalizeMarketVariant(body.marketVariant),
       configKey: body.configKey,
       matchType: body.matchType,
       pattern: body.pattern,
+      status: body.status,
       enabled: body.enabled,
       priority: body.priority,
     });
@@ -151,6 +206,7 @@ export class PredictController {
     @Param('id', ParseIntPipe) id: number,
     @Body() body: UpdateSlugMatchRuleBody,
   ) {
+    // Backward-compatible alias for crypto-bet update
     return this.predictService.updateSlugMatchRule(id, {
       marketVariant:
         body.marketVariant !== undefined
@@ -159,6 +215,46 @@ export class PredictController {
       configKey: body.configKey,
       matchType: body.matchType,
       pattern: body.pattern,
+      status: body.status,
+      enabled: body.enabled,
+      priority: body.priority,
+    });
+  }
+
+  @Get('crypto-bets')
+  async getAllCryptoBets() {
+    return this.predictService.getAllCryptoBets();
+  }
+
+  @Post('crypto-bet')
+  @UseGuards(AuthGuard)
+  async createCryptoBet(@Body() body: CreateCryptoBetBody) {
+    return this.predictService.createCryptoBet({
+      marketVariant: normalizeMarketVariant(body.marketVariant),
+      configKey: body.configKey,
+      matchType: body.matchType,
+      pattern: body.pattern,
+      status: body.status,
+      enabled: body.enabled,
+      priority: body.priority,
+    });
+  }
+
+  @Patch('crypto-bet/:id')
+  @UseGuards(AuthGuard)
+  async updateCryptoBet(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateCryptoBetBody,
+  ) {
+    return this.predictService.updateCryptoBet(id, {
+      marketVariant:
+        body.marketVariant !== undefined
+          ? normalizeMarketVariant(body.marketVariant)
+          : undefined,
+      configKey: body.configKey,
+      matchType: body.matchType,
+      pattern: body.pattern,
+      status: body.status,
       enabled: body.enabled,
       priority: body.priority,
     });
