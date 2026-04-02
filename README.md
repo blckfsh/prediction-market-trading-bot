@@ -1,84 +1,102 @@
-## Prediction Market Trading Bot v4 🔥
+## Prediction Market Trading Bot v5 🔥
 
-Automated trading bot for [Predict.fun](https://predict.fun/) (now at **v4**) that connects to the Predict HTTP + WebSocket APIs, evaluates market opportunities in real time, places signed orders, and tracks trades/configuration in PostgreSQL via Prisma.
+Automated trading bot for [Predict.fun](https://predict.fun/) now running at **v5 🔥**.
 
-The bot is worker-oriented: `BotService` handles startup and refresh loops, `TradeService` executes auto-trade and sell logic (stop-loss/profit-taking), and `PredictRepository` persists trade/config state. This is designed for continuous execution to increase trading activity while enforcing configurable risk and timing controls across supported market variants.
+It connects to Predict HTTP + WebSocket APIs, evaluates market opportunities in real time, places signed orders, and persists trading state in PostgreSQL via Prisma (generated from ZenStack ZModel).
+
+The bot is worker-oriented:
+- `BotService` handles startup, refresh loops, subscriptions, and runtime config loading.
+- `TradeService` executes buy/sell logic with stop-loss and profit-taking controls.
+- `PredictRepository` persists strategy and trade state (`MarketProfile`, buy/sell configs, `CryptoBet`, `SportsBet`, `Trade`).
 
 ![Predict UI overview](docs/images/predictdotfun-home.png)
 ![Predict bot interface](docs/images/predictbot-interface.png)
 _The image above shows the Predict bot interface._
 
-## Trading Strategies
+## What's New in v5 🔥
 
-- Supports `CRYPTO_UP_DOWN` markets (binary crypto price direction with dynamic DB-driven slug matching via `SlugMatchRule`, for example BTC-only `daily` rollout).
-- Supports `SPORTS_TEAM_MATCH` markets (sports/esports match winner flow using category + keyword matching via `SportsBet`).
-- Applies stop-loss and profit-taking sell logic across supported market variants.
+- ZenStack-first schema workflow (`schema.zmodel` is source of truth).
+- Normalized strategy data with `MarketProfile` parent model.
+- `CryptoBet` model naming (DB-mapped to legacy `SlugMatchRule` table).
+- `SportsBet` and `CryptoBet` now support `status` (`ACTIVE` | `INACTIVE`).
+- Inactive bet entries block both buy and sell decisions for matching markets.
+- Expanded API routes for `market-profile`, `crypto-bet`, and `sports-bet`.
 
-## Dynamic slug matching
+## Strategy and Rules
 
-`SlugMatchRule` lets you control which slugs map to which config key at runtime without code edits.
+- Supports `CRYPTO_UP_DOWN` markets with dynamic rule matching via `CryptoBet`.
+- Supports `SPORTS_TEAM_MATCH` markets via category + keyword matching in `SportsBet`.
+- Applies stop-loss and profit-taking logic across supported market variants.
 
+Backward-compatible alias endpoints are still available:
 - `GET /predict/slug-match-rules`
-- `POST /predict/slug-match-rule` (guarded)
-- `PATCH /predict/slug-match-rule/:id` (guarded)
-
-This enables phased rollouts such as BTC daily first, then ETH/BNB later, while keeping `BuyPositionConfig.slugWithSuffix` stable (for example `daily`).
+- `POST /predict/slug-match-rule`
+- `PATCH /predict/slug-match-rule/:id`
 
 ## Documentation
 
-- Docs index (folder): [`docs/`](docs/)
-- Trading behavior and supported variants: [`docs/trading.md`](docs/trading.md)
-- Slug rule rollout playbook: [`docs/slug-match-rules.md`](docs/slug-match-rules.md)
+- Docs index: [`docs/`](docs/)
+- Trading behavior: [`docs/trading.md`](docs/trading.md)
 - Architecture and sequence diagrams: [`docs/architecture.md`](docs/architecture.md)
+- CryptoBet rollout playbook: [`docs/crypto-bet-rules.md`](docs/crypto-bet-rules.md)
+- Model relationships (with UI diagrams): [`docs/model-relationships.md`](docs/model-relationships.md)
 - Environment variables: [`docs/env.md`](docs/env.md)
 
 ## Install dependencies
 
 ```bash
-pnpm install
+npm install
 ```
 
 ## Environment variables
 
-Environment variables are documented here: `docs/env.md`.
+See [`docs/env.md`](docs/env.md).
 
-## Architecture and flow
+## Run app
 
-- Architecture overview and responsibilities: `docs/architecture.md`
-- End-to-end worker refresh/auto-trade sequence: `docs/architecture.md#sequence-diagram-short-worker-flow`
-- Trading behavior by market variant (`CRYPTO_UP_DOWN`, `SPORTS_TEAM_MATCH`): `docs/trading.md`
+```bash
+# dev
+npm run start:dev
 
-![Architecture diagram preview](docs/images/predict-bot-architecture-design.png)
-_See the full diagrams in `docs/architecture.md`._
+# prod
+npm run build
+npm run start:prod
+```
 
 ## Run tests
 
 ```bash
-# unit tests
-pnpm run test
-
-# e2e tests
-pnpm run test:e2e
-
-# test coverage
-pnpm run test:cov
+npm run test
+npm run test:e2e
+npm run test:cov
+npm run db:check
 ```
 
-## Run migrations
+## Schema and migrations (ZenStack-first)
 
 ```bash
-pnpm run migration:run
+# 1) Sync Prisma schema/client from ZModel
+npm run schema:sync
+
+# 2) Create/apply migration in dev
+npm run db:migrate
+
+# 3) Check migration state
+npm run db:migrate:status
+
+# 4) Apply pending migrations (deploy)
+npm run db:migrate:deploy
 ```
 
-## Start the app
+## Optional Makefile shortcuts
+
+If `make` is installed:
 
 ```bash
-# development
-pnpm run start
-
-# watch mode
-pnpm run start:dev
-
-# production mode
-pnpm run start:prod
+make help
+make dev
+make test
+make test-e2e
+make schema-sync
+make migrate
 ```

@@ -2,7 +2,7 @@
 
 This document describes how the bot decides to buy and sell, which market variants it currently supports, and how configuration records are interpreted at runtime.
 
-For rollout examples and copy-paste payloads, see [`docs/slug-match-rules.md`](slug-match-rules.md).
+For rollout examples and copy-paste payloads, see [`docs/crypto-bet-rules.md`](crypto-bet-rules.md).
 
 ## Supported market variants
 
@@ -10,7 +10,7 @@ The bot currently supports these `marketVariant` values for buy configuration:
 
 | Market variant   | Purpose                                            | Config key shape                                             | Supported today |
 | ---------------- | -------------------------------------------------- | ------------------------------------------------------------ | --------------- |
-| `CRYPTO_UP_DOWN` | Binary price direction markets such as BTC up/down | `SlugMatchRule` -> `configKey` -> `BuyPositionConfig.slugWithSuffix` | Yes        |
+| `CRYPTO_UP_DOWN` | Binary price direction markets such as BTC up/down | `CryptoBet` -> `configKey` -> `BuyPositionConfig.slugWithSuffix` | Yes        |
 | `SPORTS_TEAM_MATCH` | Binary sports/esports match winner markets      | `slugWithSuffix` prefix match plus `SportsBet` keyword match | Yes             |
 
 ## Core tables used by trading
@@ -22,7 +22,7 @@ Acts as the normalized parent key for strategy records.
 - `marketVariant`: variant-specific behavior
 - `configKey`: stable strategy key (replaces string-only joins across tables)
 - linked one-to-one to buy/sell configs
-- linked one-to-many to sports keywords and slug match rules
+- linked one-to-many to sports keywords and crypto bet rules
 
 ### `BuyPositionConfig`
 
@@ -58,7 +58,7 @@ Used only for `SPORTS_TEAM_MATCH` markets.
 - `category`: slug prefix to match, for example `lol`
 - `keyword`: team or outcome keyword to match inside the market slug, for example `g2`
 
-### `SlugMatchRule`
+### `CryptoBet` (DB-mapped from legacy `SlugMatchRule`)
 
 Used to dynamically map market slugs to a stable buy/sell config key without code changes.
 
@@ -93,19 +93,19 @@ Legacy stored values are still normalized:
 
 ### `CRYPTO_UP_DOWN`
 
-Current matching is rule-driven via `SlugMatchRule`. The first enabled rule by priority that matches the slug resolves the config key.
+Current matching is rule-driven via `CryptoBet`. The first enabled `ACTIVE` rule by priority that matches the slug resolves the config key.
 
 Example:
 
 - market slug: `bitcoin-up-or-down-on-march-26-2026`
-- `SlugMatchRule.matchType`: `regex`
-- `SlugMatchRule.pattern`: `^bitcoin-up-or-down-on-[a-z]+-\d{1,2}-\d{4}$`
-- `SlugMatchRule.configKey`: `daily`
+- `CryptoBet.matchType`: `regex`
+- `CryptoBet.pattern`: `^bitcoin-up-or-down-on-[a-z]+-\d{1,2}-\d{4}$`
+- `CryptoBet.configKey`: `daily`
 - `BuyPositionConfig.slugWithSuffix`: `daily`
 
 Behavior:
 
-1. The bot evaluates enabled `SlugMatchRule` rows in priority order.
+1. The bot evaluates enabled `CryptoBet` rows in priority order.
 2. The first matching rule returns `configKey`.
 3. The buy config is loaded by `configKey`.
 4. `entry`, `amount`, and `tradeType` are taken from that config.
@@ -272,7 +272,7 @@ sequenceDiagram
 - Category discovery is tag-aware. The bot loads tag IDs from `/tags`, then fetches `CRYPTO_UP_DOWN` and `SPORTS_TEAM_MATCH` categories separately.
 - Sports category discovery is narrowed to LoL-tagged categories, with a local `lol-` slug check as a safeguard because the upstream `tagIds` filter can still return non-LoL rows.
 - The buy flow is WebSocket-triggered; it does not scan every market continuously.
-- Slug-to-config resolution can be controlled at runtime through `SlugMatchRule` rows.
+- Slug-to-config resolution can be controlled at runtime through `CryptoBet` rows.
 - `entry` is interpreted as seconds after market creation.
 - If either side has price `0`, the bot skips the market.
 - The bot refuses buys that are not profitable after fees.
@@ -283,5 +283,5 @@ sequenceDiagram
 
 - `CRYPTO_UP_DOWN` is treated as a binary market with yes/no style pricing.
 - `SPORTS_TEAM_MATCH` assumes outcome names contain enough text to match the `SportsBet.keyword`.
-- `SlugMatchRule` provides the primary matching mechanism for dynamic rollout (for example BTC-only `daily`, then ETH/BNB later).
+- `CryptoBet` provides the primary matching mechanism for dynamic rollout (for example BTC-only `daily`, then ETH/BNB later).
 - `SUPPORTED_SLUG_KEYWORDS` remains as a fallback for legacy behavior when no matching dynamic rule applies.
