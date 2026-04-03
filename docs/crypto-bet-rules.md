@@ -20,11 +20,11 @@ Compatibility aliases:
 - `configKey`: should match your config rows (`BuyPositionConfig.slugWithSuffix`, `SellPositionConfig.slugWithSuffix`), for example `daily`
 - `matchType`: `prefix` | `suffix` | `regex`
 - `pattern`: matcher expression (regex supported)
-- `status`: `ACTIVE` | `INACTIVE` (inactive blocks buy/sell continuation)
+- `status`: `ACTIVE` | `INACTIVE` (stored in shared `BetRuleConfig`; inactive blocks buy/sell continuation)
 - `enabled`: toggle rule on/off
-- `priority`: lower runs first
-- `amount`: required buy amount for this specific crypto rule
-- `profitTakingPercentage`: optional profit-taking setting for this specific crypto rule
+- `priority`: lower runs first (stored in shared `BetRuleConfig`)
+- `amount`: required buy amount for this specific crypto rule (stored in shared `BetRuleConfig`)
+- `profitTakingPercentage`: optional profit-taking setting for this specific crypto rule (stored in shared `BetRuleConfig`)
 
 ## BTC-first rollout
 
@@ -54,7 +54,8 @@ Create this rule first:
   "pattern": "^ethereum-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$",
   "status": "ACTIVE",
   "enabled": true,
-  "priority": 2
+  "priority": 2,
+  "amount": 20
 }
 ```
 
@@ -68,7 +69,8 @@ Create this rule first:
   "pattern": "^bnb-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$",
   "status": "ACTIVE",
   "enabled": true,
-  "priority": 3
+  "priority": 3,
+  "amount": 15
 }
 ```
 

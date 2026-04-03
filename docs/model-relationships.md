@@ -44,7 +44,6 @@ erDiagram
     BuyPositionConfig {
       int id PK
       int marketProfileId FK
-      int amount
       int entry
       BuyTradeType tradeType
     }
@@ -98,14 +97,14 @@ erDiagram
 ```mermaid
 flowchart TD
   A[Incoming market slug + variant] --> B{Variant}
-  B -->|CRYPTO_UP_DOWN| C[Match CryptoBet by pattern/priority]
-  B -->|SPORTS_TEAM_MATCH| D[Match SportsBet by category+keyword+priority]
+  B -->|CRYPTO_UP_DOWN| C[Match CryptoBet by pattern + BetRuleConfig priority]
+  B -->|SPORTS_TEAM_MATCH| D[Match SportsBet by category+keyword + BetRuleConfig priority]
 
-  C --> E{CryptoBet status}
+  C --> E{BetRuleConfig status}
   E -->|ACTIVE| F[Resolve MarketProfile configKey]
   E -->|INACTIVE| X[Skip buy/sell]
 
-  D --> G{SportsBet status}
+  D --> G{BetRuleConfig status}
   G -->|ACTIVE| F
   G -->|INACTIVE| X
 

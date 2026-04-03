@@ -102,7 +102,7 @@ Legacy stored values are still normalized:
 
 ### `CRYPTO_UP_DOWN`
 
-Current matching is rule-driven via `CryptoBet`. The first enabled `ACTIVE` rule by priority that matches the slug resolves the config key.
+Current matching is rule-driven via `CryptoBet`. The first enabled rule with `BetRuleConfig.status = ACTIVE` and lowest `BetRuleConfig.priority` that matches the slug resolves the config key.
 
 Example:
 
@@ -114,7 +114,7 @@ Example:
 
 Behavior:
 
-1. The bot evaluates enabled `CryptoBet` rows in priority order.
+1. The bot evaluates enabled `CryptoBet` rows in `BetRuleConfig.priority` order.
 2. The first matching rule returns `configKey`.
 3. The buy config is loaded by `configKey`.
 4. `entry` and `tradeType` are taken from that config.
@@ -178,7 +178,7 @@ sequenceDiagram
     API-->>Trade: Market and prices
     Trade->>Trade: Check market time left and zero-price guard
     alt SPORTS_TEAM_MATCH with keyword
-      Trade->>Trade: Match sports keyword against outcome names using SportsBet priority
+      Trade->>Trade: Match sports keyword against outcome names using BetRuleConfig priority
       alt No matching outcome
         Trade-->>Bot: Skip
       else Matching outcome found
@@ -293,8 +293,8 @@ sequenceDiagram
 - For sports, keyword-to-outcome-name matching is authoritative.
 - For sports, when multiple supported teams match one slug, lower `BetRuleConfig.priority` wins.
 - For non-sports binary markets, `tradeType` controls which binary outcome to buy.
-- Per-outcome `amount` is enforced on `SportsBet` and `CryptoBet`.
-- `profitTakingPercentage` remains optional on `SportsBet` and `CryptoBet` with env fallback.
+- Per-outcome `amount` is enforced through `BetRuleConfig` linked from `SportsBet` and `CryptoBet`.
+- `profitTakingPercentage` remains optional in `BetRuleConfig` with env fallback.
 
 ## Current implementation assumptions
 
