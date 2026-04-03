@@ -637,8 +637,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         this.getStopLossPercentageForMarketSlug.bind(this),
       getAmountPercentageForMarketSlug:
         this.getAmountPercentageForMarketSlug.bind(this),
-      getProfitTakingPercentageForMarketSlug:
-        this.getProfitTakingPercentageForMarketSlug.bind(this),
       createOrder: (createOrderBody) =>
         this.tradeService.createOrder({
           baseUrl: this.baseUrl!,
@@ -659,6 +657,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       subscribeToOrderbook: this.subscribeToOrderbook.bind(this),
       getAmountPercentageForMarketSlug:
         this.getAmountPercentageForMarketSlug.bind(this),
+      getProfitTakingPercentageForMarketSlug:
+        this.getProfitTakingPercentageForMarketSlug.bind(this),
       createOrder: (createOrderBody) =>
         this.tradeService.createOrder({
           baseUrl: this.baseUrl!,

@@ -20,6 +20,7 @@ _The image above shows the Predict bot interface._
 - `CryptoBet` model naming (DB-mapped to legacy `SlugMatchRule` table).
 - `SportsBet` and `CryptoBet` now support `status` (`ACTIVE` | `INACTIVE`).
 - `SportsBet` and `CryptoBet` now enforce `amount` per matched outcome/rule and can optionally set `profitTakingPercentage`.
+- Shared rule settings are normalized through `BetRuleConfig` to avoid duplicated schema across `SportsBet` and `CryptoBet`.
 - `SportsBet` now supports `priority` so head-to-head supported teams resolve deterministically.
 - Inactive bet entries block both buy and sell decisions for matching markets.
 - Expanded API routes for `market-profile`, `crypto-bet`, and `sports-bet`.
