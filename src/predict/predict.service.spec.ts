@@ -15,7 +15,6 @@ describe('PredictService', () => {
     id: 1,
     marketVariant: MarketVariant.DEFAULT,
     slugWithSuffix: 'crypto-up-down-1',
-    amount: 100,
     entry: 25,
     tradeType: 'avg-price',
   };
@@ -79,7 +78,6 @@ describe('PredictService', () => {
       service.createBuyPositionConfig(
         MarketVariant.DEFAULT,
         'crypto-up-down-1',
-        100,
         25,
         'yes',
       ),
@@ -88,14 +86,13 @@ describe('PredictService', () => {
     expect(predictRepository.saveBuyPositionConfig).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
       'crypto-up-down-1',
-      100,
       25,
       'yes',
     );
   });
 
   it('updates buy position config', async () => {
-    const updatedConfig = { ...buyConfig, amount: 250, entry: 30 };
+    const updatedConfig = { ...buyConfig, entry: 30 };
     predictRepository.updateBuyPositionConfig.mockResolvedValue(updatedConfig);
 
     await expect(
@@ -103,7 +100,6 @@ describe('PredictService', () => {
         MarketVariant.DEFAULT,
         'crypto-up-down-1',
         {
-          amount: 250,
           entry: 30,
           tradeType: 'no',
         },
@@ -113,7 +109,7 @@ describe('PredictService', () => {
     expect(predictRepository.updateBuyPositionConfig).toHaveBeenCalledWith(
       MarketVariant.DEFAULT,
       'crypto-up-down-1',
-      { amount: 250, entry: 30, tradeType: 'no' },
+      { entry: 30, tradeType: 'no' },
     );
   });
 
@@ -200,6 +196,7 @@ describe('PredictService', () => {
       configKey: 'daily',
       matchType: 'suffix',
       pattern: 'daily',
+      amount: 10,
       enabled: true,
       priority: 100,
     };
@@ -211,6 +208,7 @@ describe('PredictService', () => {
         configKey: 'daily',
         matchType: 'suffix',
         pattern: 'daily',
+        amount: 10,
       }),
     ).resolves.toEqual(created);
     expect(predictRepository.saveSlugMatchRule).toHaveBeenCalledWith({
@@ -221,6 +219,8 @@ describe('PredictService', () => {
       status: undefined,
       enabled: true,
       priority: 100,
+      amount: 10,
+      profitTakingPercentage: undefined,
     });
   });
 

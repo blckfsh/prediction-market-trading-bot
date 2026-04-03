@@ -219,6 +219,7 @@ export class TradeService {
     getMarketById: (marketId: number) => Promise<MarketDataResponse>;
     subscribeToOrderbook: (marketId: number) => void;
     getAmountPercentageForMarketSlug: (slug: string) => number | null;
+    getProfitTakingPercentageForMarketSlug?: (slug: string) => number | null;
     createOrder: (body: CreateOrderBody) => Promise<CreateOrderResponse>;
     orderBuilder: OrderBuilder;
     signer: Wallet;
@@ -233,15 +234,14 @@ export class TradeService {
     const rawProfitPercentage = this.configService.get<string>(
       'PREDICT_PROFIT_TAKING_PERCENTAGE',
     );
-    const profitTakingPercentage = Number(rawProfitPercentage);
-    if (
-      !Number.isFinite(profitTakingPercentage) ||
-      profitTakingPercentage <= 0
-    ) {
+    const fallbackProfitTakingPercentage = Number(rawProfitPercentage);
+    const hasValidFallbackProfitTakingPercentage =
+      Number.isFinite(fallbackProfitTakingPercentage) &&
+      fallbackProfitTakingPercentage > 0;
+    if (!hasValidFallbackProfitTakingPercentage) {
       this.logger.warn(
         `Profit-taking skipped. Invalid PREDICT_PROFIT_TAKING_PERCENTAGE: ${rawProfitPercentage ?? 'N/A'}.`,
       );
-      return;
     }
 
     const {
@@ -250,6 +250,7 @@ export class TradeService {
       getMarketById,
       subscribeToOrderbook,
       getAmountPercentageForMarketSlug,
+      getProfitTakingPercentageForMarketSlug,
       createOrder,
       orderBuilder,
       signer,
@@ -287,6 +288,30 @@ export class TradeService {
       }
 
       try {
+        const configuredProfitTakingPercentage =
+          getProfitTakingPercentageForMarketSlug?.(position.market.categorySlug);
+        let profitTakingPercentage = hasValidFallbackProfitTakingPercentage
+          ? fallbackProfitTakingPercentage
+          : null;
+        if (configuredProfitTakingPercentage != null) {
+          if (
+            Number.isFinite(configuredProfitTakingPercentage) &&
+            configuredProfitTakingPercentage > 0
+          ) {
+            profitTakingPercentage = configuredProfitTakingPercentage;
+          } else {
+            this.logger.warn(
+              `Profit-taking override is invalid for market ${position.market.id} slug ${position.market.categorySlug}: ${configuredProfitTakingPercentage}. Falling back to env config.`,
+            );
+          }
+        }
+        if (profitTakingPercentage === null) {
+          this.logger.warn(
+            `Profit-taking skipped. No valid threshold for market ${position.market.id} slug ${position.market.categorySlug}.`,
+          );
+          continue;
+        }
+
         const entryValueUsd = Number(trade.buyAmountInUsd);
         if (!Number.isFinite(entryValueUsd) || entryValueUsd <= 0) {
           this.logger.warn(

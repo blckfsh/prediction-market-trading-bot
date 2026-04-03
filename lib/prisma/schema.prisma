@@ -82,7 +82,6 @@ model MarketProfile {
 model BuyPositionConfig {
     id Int @id() @default(autoincrement())
     marketProfileId Int @unique()
-    amount Int
     entry Int
     tradeType BuyTradeType @default(AVG_PRICE)
     createdAt DateTime @default(now())
@@ -111,6 +110,9 @@ model SportsBet {
     marketProfileId Int
     keyword String
     category String
+    priority Int @default(100)
+    amount Int
+    profitTakingPercentage Int?
     status BetStatus @default(ACTIVE)
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt()
@@ -124,6 +126,8 @@ model CryptoBet {
     marketProfileId Int
     matchType SlugMatchType
     pattern String
+    amount Int
+    profitTakingPercentage Int?
     status BetStatus @default(ACTIVE)
     enabled Boolean @default(true)
     priority Int @default(100)

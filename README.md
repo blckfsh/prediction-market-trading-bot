@@ -19,6 +19,8 @@ _The image above shows the Predict bot interface._
 - Normalized strategy data with `MarketProfile` parent model.
 - `CryptoBet` model naming (DB-mapped to legacy `SlugMatchRule` table).
 - `SportsBet` and `CryptoBet` now support `status` (`ACTIVE` | `INACTIVE`).
+- `SportsBet` and `CryptoBet` now enforce `amount` per matched outcome/rule and can optionally set `profitTakingPercentage`.
+- `SportsBet` now supports `priority` so head-to-head supported teams resolve deterministically.
 - Inactive bet entries block both buy and sell decisions for matching markets.
 - Expanded API routes for `market-profile`, `crypto-bet`, and `sports-bet`.
 
@@ -26,6 +28,7 @@ _The image above shows the Predict bot interface._
 
 - Supports `CRYPTO_UP_DOWN` markets with dynamic rule matching via `CryptoBet`.
 - Supports `SPORTS_TEAM_MATCH` markets via category + keyword matching in `SportsBet`.
+- Uses `SportsBet.priority` when multiple supported teams match the same sports slug.
 - Applies stop-loss and profit-taking logic across supported market variants.
 
 Backward-compatible alias endpoints are still available:

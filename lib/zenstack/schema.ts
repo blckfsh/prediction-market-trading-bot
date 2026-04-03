@@ -176,10 +176,6 @@ export class SchemaType implements SchemaDef {
                         "marketProfile"
                     ]
                 },
-                amount: {
-                    name: "amount",
-                    type: "Int"
-                },
                 entry: {
                     name: "entry",
                     type: "Int"
@@ -316,6 +312,21 @@ export class SchemaType implements SchemaDef {
                     name: "category",
                     type: "String"
                 },
+                priority: {
+                    name: "priority",
+                    type: "Int",
+                    attributes: [{ name: "@default", args: [{ name: "value", value: ExpressionUtils.literal(100) }] }],
+                    default: 100
+                },
+                amount: {
+                    name: "amount",
+                    type: "Int"
+                },
+                profitTakingPercentage: {
+                    name: "profitTakingPercentage",
+                    type: "Int",
+                    optional: true
+                },
                 status: {
                     name: "status",
                     type: "BetStatus",
@@ -374,6 +385,15 @@ export class SchemaType implements SchemaDef {
                 pattern: {
                     name: "pattern",
                     type: "String"
+                },
+                amount: {
+                    name: "amount",
+                    type: "Int"
+                },
+                profitTakingPercentage: {
+                    name: "profitTakingPercentage",
+                    type: "Int",
+                    optional: true
                 },
                 status: {
                     name: "status",

@@ -56,6 +56,9 @@ export class PredictController {
       category: body.category,
       keyword: body.keyword,
       status: body.status,
+      priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 
@@ -74,6 +77,9 @@ export class PredictController {
       category: body.category,
       keyword: body.keyword,
       status: body.status,
+      priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 
@@ -101,12 +107,11 @@ export class PredictController {
   @Post('buy-position-config')
   @UseGuards(AuthGuard)
   async createBuyPositionConfig(@Body() body: CreateBuyPositionConfigBody) {
-    const { marketVariant, slugWithSuffix, amount, entry, tradeType } = body;
+    const { marketVariant, slugWithSuffix, entry, tradeType } = body;
     const normalizedVariant = normalizeMarketVariant(marketVariant);
     return this.predictService.createBuyPositionConfig(
       normalizedVariant,
       slugWithSuffix,
-      amount,
       entry,
       tradeType,
     );
@@ -197,6 +202,8 @@ export class PredictController {
       status: body.status,
       enabled: body.enabled,
       priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 
@@ -218,6 +225,8 @@ export class PredictController {
       status: body.status,
       enabled: body.enabled,
       priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 
@@ -237,6 +246,8 @@ export class PredictController {
       status: body.status,
       enabled: body.enabled,
       priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 
@@ -257,6 +268,8 @@ export class PredictController {
       status: body.status,
       enabled: body.enabled,
       priority: body.priority,
+      amount: body.amount,
+      profitTakingPercentage: body.profitTakingPercentage,
     });
   }
 }

@@ -23,6 +23,8 @@ Compatibility aliases:
 - `status`: `ACTIVE` | `INACTIVE` (inactive blocks buy/sell continuation)
 - `enabled`: toggle rule on/off
 - `priority`: lower runs first
+- `amount`: required buy amount for this specific crypto rule
+- `profitTakingPercentage`: optional profit-taking setting for this specific crypto rule
 
 ## BTC-first rollout
 
@@ -36,7 +38,9 @@ Create this rule first:
   "pattern": "^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$",
   "status": "ACTIVE",
   "enabled": true,
-  "priority": 1
+  "priority": 1,
+  "amount": 25,
+  "profitTakingPercentage": 40
 }
 ```
 
@@ -86,5 +90,6 @@ You can also lower a rule's precedence by increasing `priority`.
 
 1. `GET /predict/crypto-bets` shows expected rows and priorities.
 2. Buy/sell config rows exist for `slugWithSuffix = daily`.
-3. Logs stop showing `No supported keyword found` for slugs covered by enabled active rules.
-4. Logs continue to skip symbols that are intentionally not enabled yet.
+3. Every rule must define `amount`; profit-taking remains optional per rule.
+4. Logs stop showing `No supported keyword found` for slugs covered by enabled active rules.
+5. Logs continue to skip symbols that are intentionally not enabled yet.

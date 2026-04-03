@@ -17,6 +17,9 @@ export type SportsBetRecord = {
   configKey: string;
   keyword: string;
   category: string;
+  priority: number;
+  amount: number;
+  profitTakingPercentage: number | null;
   status?: 'ACTIVE' | 'INACTIVE';
 };
 
@@ -28,7 +31,6 @@ export type BuyPositionConfigRecord = {
   id: number;
   marketVariant: MarketVariant;
   slugWithSuffix: string;
-  amount: number;
   entry: number;
   tradeType: BuyTradeType;
 };
@@ -47,6 +49,8 @@ export type SlugMatchRuleRecord = {
   configKey: string;
   matchType: SlugMatchType;
   pattern: string;
+  amount: number;
+  profitTakingPercentage: number | null;
   status?: 'ACTIVE' | 'INACTIVE';
   enabled: boolean;
   priority: number;
@@ -251,7 +255,6 @@ export class PredictRepository {
       id: config.id,
       marketVariant: profile.marketVariant as MarketVariant,
       slugWithSuffix: profile.configKey,
-      amount: config.amount,
       entry: config.entry,
       tradeType: this.fromDbBuyTradeType(String(config.tradeType)),
     };
@@ -265,7 +268,6 @@ export class PredictRepository {
       id: row.id,
       marketVariant: row.marketProfile.marketVariant as MarketVariant,
       slugWithSuffix: row.marketProfile.configKey,
-      amount: row.amount,
       entry: row.entry,
       tradeType: this.fromDbBuyTradeType(String(row.tradeType)),
     }));
@@ -318,6 +320,7 @@ export class PredictRepository {
         },
       },
       include: { marketProfile: true },
+      orderBy: [{ priority: 'asc' }, { id: 'asc' }],
     });
     return rows.map((row) => ({
       id: row.id,
@@ -325,6 +328,9 @@ export class PredictRepository {
       configKey: row.marketProfile.configKey,
       keyword: row.keyword,
       category: row.category,
+      priority: row.priority,
+      amount: row.amount,
+      profitTakingPercentage: row.profitTakingPercentage,
       status: row.status as 'ACTIVE' | 'INACTIVE',
     }));
   }
@@ -335,8 +341,20 @@ export class PredictRepository {
     keyword: string;
     category: string;
     status?: 'ACTIVE' | 'INACTIVE';
+    priority?: number;
+    amount: number;
+    profitTakingPercentage?: number;
   }): Promise<SportsBetRecord> {
-    const { marketVariant, configKey, keyword, category, status } = params;
+    const {
+      marketVariant,
+      configKey,
+      keyword,
+      category,
+      status,
+      priority,
+      amount,
+      profitTakingPercentage,
+    } = params;
     const profile = await this.ensureMarketProfile(marketVariant, configKey);
     const existing = await this.prisma.sportsBet.findFirst({
       where: {
@@ -356,6 +374,9 @@ export class PredictRepository {
         category,
         keyword,
         status: status ?? 'ACTIVE',
+        priority: priority ?? 100,
+        amount,
+        profitTakingPercentage,
       },
       include: { marketProfile: true },
     });
@@ -365,6 +386,9 @@ export class PredictRepository {
       configKey: created.marketProfile.configKey,
       category: created.category,
       keyword: created.keyword,
+      priority: created.priority,
+      amount: created.amount,
+      profitTakingPercentage: created.profitTakingPercentage,
       status: created.status as 'ACTIVE' | 'INACTIVE',
     };
   }
@@ -377,6 +401,9 @@ export class PredictRepository {
       keyword?: string;
       category?: string;
       status?: 'ACTIVE' | 'INACTIVE';
+      priority?: number;
+      amount?: number;
+      profitTakingPercentage?: number;
     },
   ): Promise<SportsBetRecord> {
     const existing = await this.prisma.sportsBet.findUnique({
@@ -409,6 +436,9 @@ export class PredictRepository {
         keyword: updates.keyword,
         category: updates.category,
         status: updates.status,
+        priority: updates.priority,
+        amount: updates.amount,
+        profitTakingPercentage: updates.profitTakingPercentage,
       },
       include: { marketProfile: true },
     });
@@ -418,6 +448,9 @@ export class PredictRepository {
       configKey: updated.marketProfile.configKey,
       category: updated.category,
       keyword: updated.keyword,
+      priority: updated.priority,
+      amount: updated.amount,
+      profitTakingPercentage: updated.profitTakingPercentage,
       status: updated.status as 'ACTIVE' | 'INACTIVE',
     };
   }
@@ -434,6 +467,8 @@ export class PredictRepository {
       configKey: row.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(row.matchType)),
       pattern: row.pattern,
+      amount: row.amount,
+      profitTakingPercentage: row.profitTakingPercentage,
       status: row.status as 'ACTIVE' | 'INACTIVE',
       enabled: row.enabled,
       priority: row.priority,
@@ -448,6 +483,8 @@ export class PredictRepository {
     enabled: boolean;
     priority: number;
     status?: 'ACTIVE' | 'INACTIVE';
+    amount: number;
+    profitTakingPercentage?: number;
   }): Promise<SlugMatchRuleRecord> {
     const {
       marketVariant,
@@ -457,6 +494,8 @@ export class PredictRepository {
       enabled,
       priority,
       status,
+      amount,
+      profitTakingPercentage,
     } = params;
     const profile = await this.ensureMarketProfile(marketVariant, configKey);
     const dbMatchType = this.toDbSlugMatchType(matchType);
@@ -480,6 +519,8 @@ export class PredictRepository {
         status: status ?? 'ACTIVE',
         enabled,
         priority,
+        amount,
+        profitTakingPercentage,
       },
       include: { marketProfile: true },
     });
@@ -489,6 +530,8 @@ export class PredictRepository {
       configKey: inserted.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(inserted.matchType)),
       pattern: inserted.pattern,
+      amount: inserted.amount,
+      profitTakingPercentage: inserted.profitTakingPercentage,
       status: inserted.status as 'ACTIVE' | 'INACTIVE',
       enabled: inserted.enabled,
       priority: inserted.priority,
@@ -505,6 +548,8 @@ export class PredictRepository {
       status?: 'ACTIVE' | 'INACTIVE';
       enabled?: boolean;
       priority?: number;
+      amount?: number;
+      profitTakingPercentage?: number;
     },
   ): Promise<SlugMatchRuleRecord> {
     const existing = await this.prisma.cryptoBet.findUnique({
@@ -540,6 +585,8 @@ export class PredictRepository {
         status: updates.status,
         enabled: updates.enabled,
         priority: updates.priority,
+        amount: updates.amount,
+        profitTakingPercentage: updates.profitTakingPercentage,
       },
       include: { marketProfile: true },
     });
@@ -549,6 +596,8 @@ export class PredictRepository {
       configKey: updated.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(updated.matchType)),
       pattern: updated.pattern,
+      amount: updated.amount,
+      profitTakingPercentage: updated.profitTakingPercentage,
       status: updated.status as 'ACTIVE' | 'INACTIVE',
       enabled: updated.enabled,
       priority: updated.priority,
@@ -607,7 +656,6 @@ export class PredictRepository {
   async saveBuyPositionConfig(
     marketVariant: MarketVariant,
     slugWithSuffix: string,
-    amount: number,
     entry: number,
     tradeType?: BuyTradeType,
   ): Promise<BuyPositionConfigRecord> {
@@ -630,7 +678,6 @@ export class PredictRepository {
     const created = await this.prisma.buyPositionConfig.create({
       data: {
         marketProfileId: profile.id,
-        amount,
         entry,
         tradeType: this.toDbBuyTradeType(normalizedTradeType),
       },
@@ -639,7 +686,6 @@ export class PredictRepository {
       id: created.id,
       marketVariant,
       slugWithSuffix,
-      amount: created.amount,
       entry: created.entry,
       tradeType: normalizedTradeType,
     };
@@ -649,7 +695,6 @@ export class PredictRepository {
     marketVariant: MarketVariant,
     slugWithSuffix: string,
     updates: {
-      amount?: number;
       entry?: number;
       tradeType?: BuyTradeType;
     },
@@ -674,7 +719,6 @@ export class PredictRepository {
     const updated = await this.prisma.buyPositionConfig.update({
       where: { id: buyConfig.id },
       data: {
-        amount: updates.amount,
         entry: updates.entry,
         ...(updates.tradeType !== undefined
           ? {
@@ -689,7 +733,6 @@ export class PredictRepository {
       id: updated.id,
       marketVariant,
       slugWithSuffix,
-      amount: updated.amount,
       entry: updated.entry,
       tradeType: this.fromDbBuyTradeType(String(updated.tradeType)),
     };

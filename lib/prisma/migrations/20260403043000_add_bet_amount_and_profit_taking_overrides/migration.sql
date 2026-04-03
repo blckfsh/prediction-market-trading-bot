@@ -1,0 +1,7 @@
+ALTER TABLE "SportsBet"
+  ADD COLUMN IF NOT EXISTS "amount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "profitTakingPercentage" INTEGER;
+
+ALTER TABLE "SlugMatchRule"
+  ADD COLUMN IF NOT EXISTS "amount" INTEGER,
+  ADD COLUMN IF NOT EXISTS "profitTakingPercentage" INTEGER;

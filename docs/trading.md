@@ -26,16 +26,15 @@ Acts as the normalized parent key for strategy records.
 
 ### `BuyPositionConfig`
 
-Used to determine whether the bot is allowed to buy and how much it should buy.
+Used to determine whether the bot is allowed to buy and the default buy behavior for a strategy key.
 
 - `marketProfileId`: FK to `MarketProfile`
-- `amount`: USD budget used when building the buy order
 - `entry`: number of seconds after market creation before buys are allowed
 - `tradeType`: binary outcome selection strategy
 
 ### `SellPositionConfig`
 
-Used after a trade already exists.
+Used after a trade already exists and provides shared sell defaults for a strategy key.
 
 - `marketProfileId`: FK to `MarketProfile`
 - `stopLossPercentage`: sell when unrealized loss reaches this threshold
@@ -57,6 +56,9 @@ Used only for `SPORTS_TEAM_MATCH` markets.
 - `marketProfileId`: FK to `MarketProfile`
 - `category`: slug prefix to match, for example `lol`
 - `keyword`: team or outcome keyword to match inside the market slug, for example `g2`
+- `priority`: lower value wins when multiple supported teams match the same slug
+- `amount`: required buy amount for this specific sports outcome
+- `profitTakingPercentage`: optional profit-taking setting for this specific sports outcome
 
 ### `CryptoBet` (DB-mapped from legacy `SlugMatchRule`)
 
@@ -67,6 +69,8 @@ Used to dynamically map market slugs to a stable buy/sell config key without cod
 - `pattern`: expression checked against the market slug
 - `enabled`: whether this rule participates in matching
 - `priority`: lower values run first
+- `amount`: required buy amount for this specific crypto rule
+- `profitTakingPercentage`: optional profit-taking setting for this specific crypto rule
 
 ## Trade type behavior
 
@@ -108,9 +112,11 @@ Behavior:
 1. The bot evaluates enabled `CryptoBet` rows in priority order.
 2. The first matching rule returns `configKey`.
 3. The buy config is loaded by `configKey`.
-4. `entry`, `amount`, and `tradeType` are taken from that config.
-5. The bot derives `yesBuyPrice` and `noBuyPrice` from the orderbook.
-6. `tradeType` chooses the binary outcome index.
+4. `entry` and `tradeType` are taken from that config.
+5. `amount` comes from the matched `CryptoBet.amount`.
+6. `profitTakingPercentage` comes from `CryptoBet.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
+7. The bot derives `yesBuyPrice` and `noBuyPrice` from the orderbook.
+8. `tradeType` chooses the binary outcome index.
 
 ### `SPORTS_TEAM_MATCH`
 
@@ -129,12 +135,15 @@ Example:
 Behavior:
 
 1. The bot resolves the buy config from the supported prefix.
-2. The bot checks `SportsBet` rows for a matching category prefix and keyword in the slug.
-3. If no sports keyword matches, buy entry is skipped.
-4. If a sports keyword matches, the bot looks for an outcome name containing that keyword.
-5. If no outcome name matches the keyword, the trade is skipped.
-6. If an outcome name matches, that outcome index is used directly.
-7. `tradeType` is not used to choose the sports outcome when a sports keyword exists.
+2. The bot checks `SportsBet` rows for matching category prefix and keyword in the slug.
+3. If multiple sports rows match the same slug, lower `SportsBet.priority` wins.
+4. If no sports keyword matches, buy entry is skipped.
+5. If a sports keyword matches, the bot looks for an outcome name containing that keyword.
+6. If no outcome name matches the keyword, the trade is skipped.
+7. If an outcome name matches, that outcome index is used directly.
+8. `tradeType` is not used to choose the sports outcome when a sports keyword exists.
+9. `amount` comes from the matched `SportsBet.amount`.
+10. `profitTakingPercentage` comes from `SportsBet.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
 
 ## Buy flow
 
@@ -158,13 +167,13 @@ sequenceDiagram
   alt Guard fails
     Trade-->>Bot: Skip
   else Guard passes
-    Trade->>Bot: Resolve slug, entry, amount, tradeType, sports keyword
+    Trade->>Bot: Resolve slug, entry, amount, tradeType, sports keyword, overrides
     Bot-->>Trade: Config data
     Trade->>API: Fetch market + orderbook
     API-->>Trade: Market and prices
     Trade->>Trade: Check market time left and zero-price guard
     alt SPORTS_TEAM_MATCH with keyword
-      Trade->>Trade: Match sports keyword against outcome names
+      Trade->>Trade: Match sports keyword against outcome names using SportsBet priority
       alt No matching outcome
         Trade-->>Bot: Skip
       else Matching outcome found
@@ -236,7 +245,7 @@ sequenceDiagram
         Trade-->>Bot: Skip position
       else Ownership matched
       Trade->>Bot: Resolve stopLoss / amountPercentage config
-      Bot-->>Trade: Sell config
+      Bot-->>Trade: Sell config plus optional rule-specific overrides
       Trade->>Trade: Check stop-loss or profit-taking threshold
       alt Threshold not reached
         Trade-->>Bot: Skip position
@@ -277,7 +286,10 @@ sequenceDiagram
 - If either side has price `0`, the bot skips the market.
 - The bot refuses buys that are not profitable after fees.
 - For sports, keyword-to-outcome-name matching is authoritative.
+- For sports, when multiple supported teams match one slug, lower `SportsBet.priority` wins.
 - For non-sports binary markets, `tradeType` controls which binary outcome to buy.
+- Per-outcome `amount` is enforced on `SportsBet` and `CryptoBet`.
+- `profitTakingPercentage` remains optional on `SportsBet` and `CryptoBet` with env fallback.
 
 ## Current implementation assumptions
 

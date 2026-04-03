@@ -17,7 +17,6 @@ describe('PredictController', () => {
     id: 1,
     marketVariant: MarketVariant.DEFAULT,
     slugWithSuffix: 'crypto-up-down-1',
-    amount: 100,
     entry: 25,
     tradeType: 'avg-price',
   };
@@ -101,7 +100,6 @@ describe('PredictController', () => {
         controller.createBuyPositionConfig({
           marketVariant: MarketVariant.DEFAULT,
           slugWithSuffix: 'crypto-up-down-1',
-          amount: 100,
           entry: 25,
           tradeType: 'yes',
         }),
@@ -110,7 +108,6 @@ describe('PredictController', () => {
       expect(predictService.createBuyPositionConfig).toHaveBeenCalledWith(
         MarketVariant.DEFAULT,
         'crypto-up-down-1',
-        100,
         25,
         'yes',
       );
@@ -119,21 +116,21 @@ describe('PredictController', () => {
 
   describe('updateBuyPositionConfig', () => {
     it('updates buy position config via service', async () => {
-      const updatedConfig = { ...buyConfig, amount: 250 };
+      const updatedConfig = { ...buyConfig, entry: 250 };
       predictService.updateBuyPositionConfig.mockResolvedValue(updatedConfig);
 
       await expect(
         controller.updateBuyPositionConfig(
           MarketVariant.DEFAULT,
           'crypto-up-down-1',
-          { amount: 250, tradeType: 'no' },
+          { entry: 250, tradeType: 'no' },
         ),
       ).resolves.toEqual(updatedConfig);
 
       expect(predictService.updateBuyPositionConfig).toHaveBeenCalledWith(
         MarketVariant.DEFAULT,
         'crypto-up-down-1',
-        { amount: 250, tradeType: 'no' },
+        { entry: 250, tradeType: 'no' },
       );
     });
   });
@@ -239,6 +236,7 @@ describe('PredictController', () => {
         configKey: 'daily',
         matchType: 'regex',
         pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+        amount: 10,
         enabled: true,
         priority: 1,
       };
@@ -250,6 +248,7 @@ describe('PredictController', () => {
           configKey: 'daily',
           matchType: 'regex',
           pattern: '^bitcoin-up-or-down-on-[a-z]+-\\d{1,2}-\\d{4}$',
+          amount: 10,
           enabled: true,
           priority: 1,
         }),
@@ -263,6 +262,8 @@ describe('PredictController', () => {
         status: undefined,
         enabled: true,
         priority: 1,
+        amount: 10,
+        profitTakingPercentage: undefined,
       });
     });
 
@@ -293,6 +294,8 @@ describe('PredictController', () => {
         status: undefined,
         enabled: undefined,
         priority: 2,
+        amount: undefined,
+        profitTakingPercentage: undefined,
       });
     });
   });

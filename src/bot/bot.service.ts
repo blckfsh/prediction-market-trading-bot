@@ -90,6 +90,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     id: number;
     keyword: string;
     category: string;
+    priority: number;
+    amount: number;
+    profitTakingPercentage: number | null;
     status?: 'ACTIVE' | 'INACTIVE';
   }> = [];
   private realtimeSubscriptions: Array<{ unsubscribe: () => void }> = [];
@@ -634,6 +637,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         this.getStopLossPercentageForMarketSlug.bind(this),
       getAmountPercentageForMarketSlug:
         this.getAmountPercentageForMarketSlug.bind(this),
+      getProfitTakingPercentageForMarketSlug:
+        this.getProfitTakingPercentageForMarketSlug.bind(this),
       createOrder: (createOrderBody) =>
         this.tradeService.createOrder({
           baseUrl: this.baseUrl!,
@@ -1303,19 +1308,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     marketVariant?: MarketVariant,
   ): string | null {
     if (marketVariant) {
-      for (const rule of this.slugMatchRules) {
-        if (rule.marketVariant !== marketVariant) {
-          continue;
-        }
-        if (this.matchesSlugRule(slug, rule)) {
-        if (rule.status === 'INACTIVE') {
-          this.logger.warn(
-            `Skipping slug ${slug}. Matched inactive crypto bet rule ${rule.id}.`,
-          );
-          return null;
-        }
-          return rule.configKey;
-        }
+      const matchedRule = this.getMatchedActiveSlugMatchRule(slug, marketVariant);
+      if (matchedRule) {
+        return matchedRule.configKey;
       }
     }
     const hasCryptoRules = this.slugMatchRules.some(
@@ -1345,6 +1340,66 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     return null;
   }
 
+  private getMatchedActiveSlugMatchRule(
+    slug: string,
+    marketVariant: MarketVariant,
+  ): SlugMatchRuleRecord | null {
+    for (const rule of this.slugMatchRules) {
+      if (rule.marketVariant !== marketVariant) {
+        continue;
+      }
+      if (!this.matchesSlugRule(slug, rule)) {
+        continue;
+      }
+      if (rule.status === 'INACTIVE') {
+        this.logger.warn(
+          `Skipping slug ${slug}. Matched inactive crypto bet rule ${rule.id}.`,
+        );
+        return null;
+      }
+      return rule;
+    }
+    return null;
+  }
+
+  private getMatchedSportsBetForSlug(slug: string): (typeof this.sportsBets)[number] | null {
+    if (this.sportsBets.length === 0) {
+      return null;
+    }
+    const normalizedSlug = slug.toLowerCase();
+    const matches = this.sportsBets.filter((bet) => {
+      const category = bet.category.trim().toLowerCase();
+      const keyword = bet.keyword.trim().toLowerCase();
+      if (!category || !keyword) {
+        return false;
+      }
+      const categoryPrefix = category.endsWith('-') ? category : `${category}-`;
+      return (
+        normalizedSlug.startsWith(categoryPrefix) &&
+        normalizedSlug.includes(keyword)
+      );
+    });
+    if (matches.length === 0) {
+      return null;
+    }
+    const match = matches.reduce((best, current) => {
+      if (current.priority < best.priority) {
+        return current;
+      }
+      if (current.priority === best.priority && current.id < best.id) {
+        return current;
+      }
+      return best;
+    });
+    if (match.status === 'INACTIVE') {
+      this.logger.warn(
+        `Skipping slug ${slug}. Matched inactive sports bet ${match.id}.`,
+      );
+      return null;
+    }
+    return match;
+  }
+
   private getTradeAmountForMarketSlug(slug: string): number {
     const category = this.getCategoryBySlug(slug);
     if (!category) {
@@ -1354,32 +1409,40 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       return 1;
     }
 
-    const supportedKeyword = this.resolveSupportedSlugKeyword(
-      slug,
-      category.marketVariant,
-    );
-    if (!supportedKeyword) {
-      this.logger.warn(
-        `Trade amount fallback to default (1). No supported keyword found for slug ${slug}.`,
-      );
-      return 1;
+    if (category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH) {
+      const sportsBet = this.getMatchedSportsBetForSlug(slug);
+      if (sportsBet && sportsBet.amount > 0) {
+        this.logger.log(
+          `Trade amount resolved to ${sportsBet.amount}\n` +
+            `MarketVariant: ${category.marketVariant}\n` +
+            `Slug: ${slug}\n` +
+            `Category: ${category.slug}\n` +
+            `SportsBetId: ${sportsBet.id}`,
+        );
+        return sportsBet.amount;
+      }
     }
-    const buyConfig = this.buyPositionConfigsByKey.get(
-      this.buildVariantConfigMapKey(category.marketVariant, supportedKeyword),
-    );
-    if (!buyConfig) {
-      this.logger.warn(
-        `Trade amount fallback to default (1). No buy position config for keyword ${supportedKeyword}. Slug: ${slug}. Category: ${category.slug}.`,
+
+    if (category.marketVariant === MarketVariant.CRYPTO_UP_DOWN) {
+      const slugRule = this.getMatchedActiveSlugMatchRule(
+        slug,
+        category.marketVariant,
       );
-      return 1;
+      if (slugRule && slugRule.amount > 0) {
+        this.logger.log(
+          `Trade amount resolved to ${slugRule.amount}\n` +
+            `MarketVariant: ${category.marketVariant}\n` +
+            `Slug: ${slug}\n` +
+            `Category: ${category.slug}\n` +
+            `CryptoBetRuleId: ${slugRule.id}`,
+        );
+        return slugRule.amount;
+      }
     }
-    this.logger.log(
-      `Trade amount resolved to ${buyConfig.amount}\n` +
-        `MarketVariant: ${category.marketVariant}\n` +
-        `Slug: ${slug}\n` +
-        `Category: ${category.slug}`,
+    this.logger.warn(
+      `Trade amount fallback to default (1). No matching bet/rule amount found for slug ${slug}.`,
     );
-    return buyConfig.amount;
+    return 1;
   }
 
   private getEntrySecondsForMarketSlug(slug: string): number | null {
@@ -1448,29 +1511,30 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
   }
 
   private getSportsBetKeywordForSlug(slug: string): string | null {
-    if (this.sportsBets.length === 0) {
+    const matchedSportsBet = this.getMatchedSportsBetForSlug(slug);
+    return matchedSportsBet ? matchedSportsBet.keyword.trim() : null;
+  }
+
+  private getProfitTakingPercentageForMarketSlug(slug: string): number | null {
+    const category = this.getCategoryBySlug(slug);
+    if (!category) {
       return null;
     }
-    const normalizedSlug = slug.toLowerCase();
-    const match = this.sportsBets.find((bet) => {
-      const category = bet.category.trim().toLowerCase();
-      const keyword = bet.keyword.trim().toLowerCase();
-      if (!category || !keyword) {
-        return false;
+    if (category.marketVariant === MarketVariant.SPORTS_TEAM_MATCH) {
+      const sportsBet = this.getMatchedSportsBetForSlug(slug);
+      if (!sportsBet) {
+        return null;
       }
-      const categoryPrefix = category.endsWith('-') ? category : `${category}-`;
-      return (
-        normalizedSlug.startsWith(categoryPrefix) &&
-        normalizedSlug.includes(keyword)
-      );
-    });
-    if (match && match.status === 'INACTIVE') {
-      this.logger.warn(
-        `Skipping slug ${slug}. Matched inactive sports bet ${match.id}.`,
-      );
-      return null;
+      return sportsBet.profitTakingPercentage;
     }
-    return match ? match.keyword.trim() : null;
+    if (category.marketVariant === MarketVariant.CRYPTO_UP_DOWN) {
+      const slugRule = this.getMatchedActiveSlugMatchRule(
+        slug,
+        category.marketVariant,
+      );
+      return slugRule?.profitTakingPercentage ?? null;
+    }
+    return null;
   }
 
   private getStopLossPercentageForMarketSlug(slug: string): number | null {
