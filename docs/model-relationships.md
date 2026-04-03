@@ -12,13 +12,15 @@ _v5 model relationships visual._
 - `SellPositionConfig` (1:1)
 - `CryptoBet` (1:N)
 - `SportsBet` (1:N)
+- `BetRuleConfig` (via `CryptoBet`/`SportsBet` 1:1 links)
 
 `BuyPositionConfig` and `SellPositionConfig` provide shared defaults per strategy key.
 
-`CryptoBet` and `SportsBet` now carry outcome-level sizing directly:
+`CryptoBet` and `SportsBet` now reference a shared `BetRuleConfig` model for:
 - `amount`
 - `profitTakingPercentage`
 - `priority` for deterministic winner selection when multiple matches are possible
+- `status`
 
 `Trade` stores executed buy/sell lifecycle records and ownership keys.
 
@@ -57,24 +59,26 @@ erDiagram
     CryptoBet {
       int id PK
       int marketProfileId FK
+      int betRuleConfigId FK
       SlugMatchType matchType
       string pattern
-      int amount
-      int profitTakingPercentage
-      BetStatus status
       bool enabled
-      int priority
     }
 
     SportsBet {
       int id PK
       int marketProfileId FK
+      int betRuleConfigId FK
       string category
       string keyword
-      int priority
+    }
+
+    BetRuleConfig {
+      int id PK
       int amount
       int profitTakingPercentage
       BetStatus status
+      int priority
     }
 
     Trade {
@@ -106,7 +110,7 @@ flowchart TD
   G -->|INACTIVE| X
 
   F --> H[Load BuyPositionConfig + SellPositionConfig]
-  H --> I[Apply optional CryptoBet or SportsBet overrides]
+  H --> I[Load BetRuleConfig through matched CryptoBet/SportsBet]
   I --> J[TradeService decides buy or sell]
   J --> K[Persist/Update Trade]
 ```
@@ -123,12 +127,12 @@ This allows temporary pause/rollout control without deleting rules.
 ## Override behavior
 
 - Buy amount resolution:
-  - `SportsBet.amount` / `CryptoBet.amount` (required)
+  - `BetRuleConfig.amount` (required via matched `SportsBet` / `CryptoBet`)
 - Profit-taking resolution:
-  - `SportsBet.profitTakingPercentage` / `CryptoBet.profitTakingPercentage` when present
+  - `BetRuleConfig.profitTakingPercentage` when present
   - otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`
 - Sports team selection:
-  - if multiple `SportsBet` rows match the same slug, lower `priority` wins
+  - if multiple `SportsBet` rows match the same slug, lower `BetRuleConfig.priority` wins
   - ties fall back to lower `id`
 
 ## API mapping

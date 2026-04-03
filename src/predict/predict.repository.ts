@@ -319,8 +319,8 @@ export class PredictRepository {
           marketVariant: MarketVariant.SPORTS_TEAM_MATCH,
         },
       },
-      include: { marketProfile: true },
-      orderBy: [{ priority: 'asc' }, { id: 'asc' }],
+      include: { marketProfile: true, betRuleConfig: true },
+      orderBy: [{ betRuleConfig: { priority: 'asc' } }, { id: 'asc' }],
     });
     return rows.map((row) => ({
       id: row.id,
@@ -328,10 +328,10 @@ export class PredictRepository {
       configKey: row.marketProfile.configKey,
       keyword: row.keyword,
       category: row.category,
-      priority: row.priority,
-      amount: row.amount,
-      profitTakingPercentage: row.profitTakingPercentage,
-      status: row.status as 'ACTIVE' | 'INACTIVE',
+      priority: row.betRuleConfig.priority,
+      amount: row.betRuleConfig.amount,
+      profitTakingPercentage: row.betRuleConfig.profitTakingPercentage,
+      status: row.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
     }));
   }
 
@@ -370,15 +370,21 @@ export class PredictRepository {
     }
     const created = await this.prisma.sportsBet.create({
       data: {
-        marketProfileId: profile.id,
+        marketProfile: {
+          connect: { id: profile.id },
+        },
         category,
         keyword,
-        status: status ?? 'ACTIVE',
-        priority: priority ?? 100,
-        amount,
-        profitTakingPercentage,
+        betRuleConfig: {
+          create: {
+            status: status ?? 'ACTIVE',
+            priority: priority ?? 100,
+            amount,
+            profitTakingPercentage,
+          },
+        },
       },
-      include: { marketProfile: true },
+      include: { marketProfile: true, betRuleConfig: true },
     });
     return {
       id: created.id,
@@ -386,10 +392,10 @@ export class PredictRepository {
       configKey: created.marketProfile.configKey,
       category: created.category,
       keyword: created.keyword,
-      priority: created.priority,
-      amount: created.amount,
-      profitTakingPercentage: created.profitTakingPercentage,
-      status: created.status as 'ACTIVE' | 'INACTIVE',
+      priority: created.betRuleConfig.priority,
+      amount: created.betRuleConfig.amount,
+      profitTakingPercentage: created.betRuleConfig.profitTakingPercentage,
+      status: created.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
     };
   }
 
@@ -429,37 +435,54 @@ export class PredictRepository {
       nextMarketProfileId = profile.id;
     }
 
-    const updated = await this.prisma.sportsBet.update({
-      where: { id },
-      data: {
-        marketProfileId: nextMarketProfileId,
-        keyword: updates.keyword,
-        category: updates.category,
-        status: updates.status,
-        priority: updates.priority,
-        amount: updates.amount,
-        profitTakingPercentage: updates.profitTakingPercentage,
-      },
-      include: { marketProfile: true },
-    });
+    const shouldUpdateRuleConfig =
+      updates.status !== undefined ||
+      updates.priority !== undefined ||
+      updates.amount !== undefined ||
+      updates.profitTakingPercentage !== undefined;
+
+    const [, updated] = await this.prisma.$transaction([
+      shouldUpdateRuleConfig
+        ? this.prisma.betRuleConfig.update({
+            where: { id: existing.betRuleConfigId },
+            data: {
+              status: updates.status,
+              priority: updates.priority,
+              amount: updates.amount,
+              profitTakingPercentage: updates.profitTakingPercentage,
+            },
+          })
+        : this.prisma.betRuleConfig.findUniqueOrThrow({
+            where: { id: existing.betRuleConfigId },
+          }),
+      this.prisma.sportsBet.update({
+        where: { id },
+        data: {
+          marketProfileId: nextMarketProfileId,
+          keyword: updates.keyword,
+          category: updates.category,
+        },
+        include: { marketProfile: true, betRuleConfig: true },
+      }),
+    ]);
     return {
       id: updated.id,
       marketVariant: updated.marketProfile.marketVariant as MarketVariant,
       configKey: updated.marketProfile.configKey,
       category: updated.category,
       keyword: updated.keyword,
-      priority: updated.priority,
-      amount: updated.amount,
-      profitTakingPercentage: updated.profitTakingPercentage,
-      status: updated.status as 'ACTIVE' | 'INACTIVE',
+      priority: updated.betRuleConfig.priority,
+      amount: updated.betRuleConfig.amount,
+      profitTakingPercentage: updated.betRuleConfig.profitTakingPercentage,
+      status: updated.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
     };
   }
 
   async getAllSlugMatchRules(): Promise<SlugMatchRuleRecord[]> {
     const rows = await this.prisma.cryptoBet.findMany({
       where: { enabled: true },
-      include: { marketProfile: true },
-      orderBy: [{ priority: 'asc' }, { id: 'asc' }],
+      include: { marketProfile: true, betRuleConfig: true },
+      orderBy: [{ betRuleConfig: { priority: 'asc' } }, { id: 'asc' }],
     });
     return rows.map((row) => ({
       id: row.id,
@@ -467,11 +490,11 @@ export class PredictRepository {
       configKey: row.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(row.matchType)),
       pattern: row.pattern,
-      amount: row.amount,
-      profitTakingPercentage: row.profitTakingPercentage,
-      status: row.status as 'ACTIVE' | 'INACTIVE',
+      amount: row.betRuleConfig.amount,
+      profitTakingPercentage: row.betRuleConfig.profitTakingPercentage,
+      status: row.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
       enabled: row.enabled,
-      priority: row.priority,
+      priority: row.betRuleConfig.priority,
     }));
   }
 
@@ -513,16 +536,22 @@ export class PredictRepository {
     }
     const inserted = await this.prisma.cryptoBet.create({
       data: {
-        marketProfileId: profile.id,
+        marketProfile: {
+          connect: { id: profile.id },
+        },
         matchType: dbMatchType,
         pattern,
-        status: status ?? 'ACTIVE',
         enabled,
-        priority,
-        amount,
-        profitTakingPercentage,
+        betRuleConfig: {
+          create: {
+            status: status ?? 'ACTIVE',
+            priority,
+            amount,
+            profitTakingPercentage,
+          },
+        },
       },
-      include: { marketProfile: true },
+      include: { marketProfile: true, betRuleConfig: true },
     });
     return {
       id: inserted.id,
@@ -530,11 +559,11 @@ export class PredictRepository {
       configKey: inserted.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(inserted.matchType)),
       pattern: inserted.pattern,
-      amount: inserted.amount,
-      profitTakingPercentage: inserted.profitTakingPercentage,
-      status: inserted.status as 'ACTIVE' | 'INACTIVE',
+      amount: inserted.betRuleConfig.amount,
+      profitTakingPercentage: inserted.betRuleConfig.profitTakingPercentage,
+      status: inserted.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
       enabled: inserted.enabled,
-      priority: inserted.priority,
+      priority: inserted.betRuleConfig.priority,
     };
   }
 
@@ -573,34 +602,51 @@ export class PredictRepository {
       );
       nextMarketProfileId = profile.id;
     }
-    const updated = await this.prisma.cryptoBet.update({
-      where: { id },
-      data: {
-        marketProfileId: nextMarketProfileId,
-        matchType:
-          updates.matchType !== undefined
-            ? this.toDbSlugMatchType(updates.matchType)
-            : undefined,
-        pattern: updates.pattern,
-        status: updates.status,
-        enabled: updates.enabled,
-        priority: updates.priority,
-        amount: updates.amount,
-        profitTakingPercentage: updates.profitTakingPercentage,
-      },
-      include: { marketProfile: true },
-    });
+    const shouldUpdateRuleConfig =
+      updates.status !== undefined ||
+      updates.priority !== undefined ||
+      updates.amount !== undefined ||
+      updates.profitTakingPercentage !== undefined;
+
+    const [, updated] = await this.prisma.$transaction([
+      shouldUpdateRuleConfig
+        ? this.prisma.betRuleConfig.update({
+            where: { id: existing.betRuleConfigId },
+            data: {
+              status: updates.status,
+              priority: updates.priority,
+              amount: updates.amount,
+              profitTakingPercentage: updates.profitTakingPercentage,
+            },
+          })
+        : this.prisma.betRuleConfig.findUniqueOrThrow({
+            where: { id: existing.betRuleConfigId },
+          }),
+      this.prisma.cryptoBet.update({
+        where: { id },
+        data: {
+          marketProfileId: nextMarketProfileId,
+          matchType:
+            updates.matchType !== undefined
+              ? this.toDbSlugMatchType(updates.matchType)
+              : undefined,
+          pattern: updates.pattern,
+          enabled: updates.enabled,
+        },
+        include: { marketProfile: true, betRuleConfig: true },
+      }),
+    ]);
     return {
       id: updated.id,
       marketVariant: updated.marketProfile.marketVariant as MarketVariant,
       configKey: updated.marketProfile.configKey,
       matchType: this.fromDbSlugMatchType(String(updated.matchType)),
       pattern: updated.pattern,
-      amount: updated.amount,
-      profitTakingPercentage: updated.profitTakingPercentage,
-      status: updated.status as 'ACTIVE' | 'INACTIVE',
+      amount: updated.betRuleConfig.amount,
+      profitTakingPercentage: updated.betRuleConfig.profitTakingPercentage,
+      status: updated.betRuleConfig.status as 'ACTIVE' | 'INACTIVE',
       enabled: updated.enabled,
-      priority: updated.priority,
+      priority: updated.betRuleConfig.priority,
     };
   }
 

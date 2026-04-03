@@ -79,6 +79,18 @@ model MarketProfile {
     @@unique([marketVariant, configKey])
 }
 
+model BetRuleConfig {
+    id Int @id() @default(autoincrement())
+    amount Int
+    profitTakingPercentage Int?
+    status BetStatus @default(ACTIVE)
+    priority Int @default(100)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt()
+    sportsBet SportsBet?
+    cryptoBet CryptoBet?
+}
+
 model BuyPositionConfig {
     id Int @id() @default(autoincrement())
     marketProfileId Int @unique()
@@ -108,15 +120,13 @@ model WalletApproval {
 model SportsBet {
     id Int @id() @default(autoincrement())
     marketProfileId Int
+    betRuleConfigId Int @unique()
     keyword String
     category String
-    priority Int @default(100)
-    amount Int
-    profitTakingPercentage Int?
-    status BetStatus @default(ACTIVE)
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt()
     marketProfile MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
+    betRuleConfig BetRuleConfig @relation(fields: [betRuleConfigId], references: [id], onDelete: Cascade)
 
     @@unique([marketProfileId, category, keyword])
 }
@@ -124,18 +134,16 @@ model SportsBet {
 model CryptoBet {
     id Int @id() @default(autoincrement())
     marketProfileId Int
+    betRuleConfigId Int @unique()
     matchType SlugMatchType
     pattern String
-    amount Int
-    profitTakingPercentage Int?
-    status BetStatus @default(ACTIVE)
     enabled Boolean @default(true)
-    priority Int @default(100)
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt()
     marketProfile MarketProfile @relation(fields: [marketProfileId], references: [id], onDelete: Cascade)
+    betRuleConfig BetRuleConfig @relation(fields: [betRuleConfigId], references: [id], onDelete: Cascade)
 
     @@unique([marketProfileId, matchType, pattern])
-    @@index([enabled, priority])
+    @@index([enabled, betRuleConfigId])
     @@map("SlugMatchRule")
 }

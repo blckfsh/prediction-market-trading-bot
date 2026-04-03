@@ -9,6 +9,7 @@ import { schema as $schema, type SchemaType as $Schema } from "./schema";
 import { type ModelResult as $ModelResult } from "@zenstackhq/orm";
 export type Trade = $ModelResult<$Schema, "Trade">;
 export type MarketProfile = $ModelResult<$Schema, "MarketProfile">;
+export type BetRuleConfig = $ModelResult<$Schema, "BetRuleConfig">;
 export type BuyPositionConfig = $ModelResult<$Schema, "BuyPositionConfig">;
 export type SellPositionConfig = $ModelResult<$Schema, "SellPositionConfig">;
 export type WalletApproval = $ModelResult<$Schema, "WalletApproval">;

@@ -54,23 +54,28 @@ Used as the source of truth for bot-managed position ownership.
 Used only for `SPORTS_TEAM_MATCH` markets.
 
 - `marketProfileId`: FK to `MarketProfile`
+- `betRuleConfigId`: FK to shared `BetRuleConfig`
 - `category`: slug prefix to match, for example `lol`
 - `keyword`: team or outcome keyword to match inside the market slug, for example `g2`
-- `priority`: lower value wins when multiple supported teams match the same slug
-- `amount`: required buy amount for this specific sports outcome
-- `profitTakingPercentage`: optional profit-taking setting for this specific sports outcome
 
 ### `CryptoBet` (DB-mapped from legacy `SlugMatchRule`)
 
 Used to dynamically map market slugs to a stable buy/sell config key without code changes.
 
 - `marketProfileId`: FK to `MarketProfile`
+- `betRuleConfigId`: FK to shared `BetRuleConfig`
 - `matchType`: one of `prefix`, `suffix`, `regex` (stored as enum)
 - `pattern`: expression checked against the market slug
 - `enabled`: whether this rule participates in matching
+
+### `BetRuleConfig`
+
+Shared execution settings used by both `SportsBet` and `CryptoBet`.
+
+- `amount`: required buy amount for the matched rule
+- `profitTakingPercentage`: optional profit-taking setting
+- `status`: `ACTIVE` or `INACTIVE`
 - `priority`: lower values run first
-- `amount`: required buy amount for this specific crypto rule
-- `profitTakingPercentage`: optional profit-taking setting for this specific crypto rule
 
 ## Trade type behavior
 
@@ -113,8 +118,8 @@ Behavior:
 2. The first matching rule returns `configKey`.
 3. The buy config is loaded by `configKey`.
 4. `entry` and `tradeType` are taken from that config.
-5. `amount` comes from the matched `CryptoBet.amount`.
-6. `profitTakingPercentage` comes from `CryptoBet.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
+5. `amount` comes from matched `BetRuleConfig.amount` via `CryptoBet.betRuleConfigId`.
+6. `profitTakingPercentage` comes from matched `BetRuleConfig.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
 7. The bot derives `yesBuyPrice` and `noBuyPrice` from the orderbook.
 8. `tradeType` chooses the binary outcome index.
 
@@ -136,14 +141,14 @@ Behavior:
 
 1. The bot resolves the buy config from the supported prefix.
 2. The bot checks `SportsBet` rows for matching category prefix and keyword in the slug.
-3. If multiple sports rows match the same slug, lower `SportsBet.priority` wins.
+3. If multiple sports rows match the same slug, lower `BetRuleConfig.priority` wins.
 4. If no sports keyword matches, buy entry is skipped.
 5. If a sports keyword matches, the bot looks for an outcome name containing that keyword.
 6. If no outcome name matches the keyword, the trade is skipped.
 7. If an outcome name matches, that outcome index is used directly.
 8. `tradeType` is not used to choose the sports outcome when a sports keyword exists.
-9. `amount` comes from the matched `SportsBet.amount`.
-10. `profitTakingPercentage` comes from `SportsBet.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
+9. `amount` comes from matched `BetRuleConfig.amount` via `SportsBet.betRuleConfigId`.
+10. `profitTakingPercentage` comes from matched `BetRuleConfig.profitTakingPercentage` when set, otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`.
 
 ## Buy flow
 
@@ -286,7 +291,7 @@ sequenceDiagram
 - If either side has price `0`, the bot skips the market.
 - The bot refuses buys that are not profitable after fees.
 - For sports, keyword-to-outcome-name matching is authoritative.
-- For sports, when multiple supported teams match one slug, lower `SportsBet.priority` wins.
+- For sports, when multiple supported teams match one slug, lower `BetRuleConfig.priority` wins.
 - For non-sports binary markets, `tradeType` controls which binary outcome to buy.
 - Per-outcome `amount` is enforced on `SportsBet` and `CryptoBet`.
 - `profitTakingPercentage` remains optional on `SportsBet` and `CryptoBet` with env fallback.
