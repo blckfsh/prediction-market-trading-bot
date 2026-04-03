@@ -25,10 +25,6 @@ class CreateBuyPositionConfigBody {
   slugWithSuffix: string;
 
   @IsInt()
-  @Min(1)
-  amount: number;
-
-  @IsInt()
   @Min(0)
   entry: number;
 
@@ -38,11 +34,6 @@ class CreateBuyPositionConfigBody {
 }
 
 class UpdateBuyPositionConfigBody {
-  @IsOptional()
-  @IsInt()
-  @Min(1)
-  amount?: number;
-
   @IsOptional()
   @IsInt()
   @Min(0)
@@ -110,6 +101,15 @@ class CreateSlugMatchRuleBody {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsInt()
+  @Min(1)
+  amount: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 class UpdateSlugMatchRuleBody {
@@ -141,6 +141,16 @@ class UpdateSlugMatchRuleBody {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  amount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 class CreateCryptoBetBody {
@@ -168,6 +178,15 @@ class CreateCryptoBetBody {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsInt()
+  @Min(1)
+  amount: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 class UpdateCryptoBetBody {
@@ -199,6 +218,16 @@ class UpdateCryptoBetBody {
   @IsInt()
   @Min(0)
   priority?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  amount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 class CreateMarketProfileBody {
@@ -225,6 +254,20 @@ class CreateSportsBetBody {
   @IsOptional()
   @IsIn(BET_STATUSES)
   status?: BetStatus;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsInt()
+  @Min(1)
+  amount: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 class UpdateSportsBetBody {
@@ -247,6 +290,21 @@ class UpdateSportsBetBody {
   @IsOptional()
   @IsIn(BET_STATUSES)
   status?: BetStatus;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  priority?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  amount?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  profitTakingPercentage?: number;
 }
 
 export {

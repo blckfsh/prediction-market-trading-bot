@@ -919,4 +919,33 @@ describe('BotService', () => {
     expect(profitTakingSpy).not.toHaveBeenCalled();
     expect(stopLossSpy).not.toHaveBeenCalled();
   });
+
+  it('getSportsBetKeywordForSlug should choose the highest-priority sports bet', () => {
+    (service as any).sportsBets = [
+      {
+        id: 20,
+        keyword: 't1',
+        category: 'lol',
+        priority: 50,
+        amount: 10,
+        profitTakingPercentage: null,
+        status: 'ACTIVE',
+      },
+      {
+        id: 10,
+        keyword: 'g2',
+        category: 'lol',
+        priority: 10,
+        amount: 15,
+        profitTakingPercentage: null,
+        status: 'ACTIVE',
+      },
+    ];
+
+    const keyword = (service as any).getSportsBetKeywordForSlug(
+      'lol-g2-vs-t1-friday-finals',
+    );
+
+    expect(keyword).toBe('g2');
+  });
 });

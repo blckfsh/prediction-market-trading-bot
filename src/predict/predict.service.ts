@@ -33,14 +33,12 @@ export class PredictService {
   async createBuyPositionConfig(
     marketVariant: MarketVariant,
     slugWithSuffix: string,
-    amount: number,
     entry: number,
     tradeType?: BuyTradeType,
   ): Promise<BuyPositionConfigRecord> {
     return this.predictRepository.saveBuyPositionConfig(
       marketVariant,
       slugWithSuffix,
-      amount,
       entry,
       tradeType,
     );
@@ -50,7 +48,6 @@ export class PredictService {
     marketVariant: MarketVariant,
     slugWithSuffix: string,
     updates: {
-      amount?: number;
       entry?: number;
       tradeType?: BuyTradeType;
     },
@@ -117,6 +114,8 @@ export class PredictService {
     status?: 'ACTIVE' | 'INACTIVE';
     enabled?: boolean;
     priority?: number;
+    amount: number;
+    profitTakingPercentage?: number;
   }): Promise<SlugMatchRuleRecord> {
     return this.predictRepository.saveSlugMatchRule({
       marketVariant: params.marketVariant,
@@ -126,6 +125,8 @@ export class PredictService {
       status: params.status,
       enabled: params.enabled ?? true,
       priority: params.priority ?? 100,
+      amount: params.amount,
+      profitTakingPercentage: params.profitTakingPercentage,
     });
   }
 
@@ -139,6 +140,8 @@ export class PredictService {
       status?: 'ACTIVE' | 'INACTIVE';
       enabled?: boolean;
       priority?: number;
+      amount?: number;
+      profitTakingPercentage?: number;
     },
   ): Promise<SlugMatchRuleRecord> {
     return this.predictRepository.updateSlugMatchRule(id, updates);
@@ -152,6 +155,8 @@ export class PredictService {
     status?: 'ACTIVE' | 'INACTIVE';
     enabled?: boolean;
     priority?: number;
+    amount: number;
+    profitTakingPercentage?: number;
   }): Promise<SlugMatchRuleRecord> {
     return this.createSlugMatchRule(params);
   }
@@ -166,6 +171,8 @@ export class PredictService {
       status?: 'ACTIVE' | 'INACTIVE';
       enabled?: boolean;
       priority?: number;
+      amount?: number;
+      profitTakingPercentage?: number;
     },
   ): Promise<SlugMatchRuleRecord> {
     return this.updateSlugMatchRule(id, updates);
@@ -192,6 +199,9 @@ export class PredictService {
     category: string;
     keyword: string;
     status?: 'ACTIVE' | 'INACTIVE';
+    priority?: number;
+    amount: number;
+    profitTakingPercentage?: number;
   }): Promise<SportsBetRecord> {
     return this.predictRepository.saveSportsBet(params);
   }
@@ -204,6 +214,9 @@ export class PredictService {
       category?: string;
       keyword?: string;
       status?: 'ACTIVE' | 'INACTIVE';
+      priority?: number;
+      amount?: number;
+      profitTakingPercentage?: number;
     },
   ): Promise<SportsBetRecord> {
     return this.predictRepository.updateSportsBet(id, updates);

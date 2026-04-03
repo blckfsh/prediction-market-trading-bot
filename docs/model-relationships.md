@@ -13,6 +13,13 @@ _v5 model relationships visual._
 - `CryptoBet` (1:N)
 - `SportsBet` (1:N)
 
+`BuyPositionConfig` and `SellPositionConfig` provide shared defaults per strategy key.
+
+`CryptoBet` and `SportsBet` now carry outcome-level sizing directly:
+- `amount`
+- `profitTakingPercentage`
+- `priority` for deterministic winner selection when multiple matches are possible
+
 `Trade` stores executed buy/sell lifecycle records and ownership keys.
 
 ## ER-style relationship diagram
@@ -52,6 +59,8 @@ erDiagram
       int marketProfileId FK
       SlugMatchType matchType
       string pattern
+      int amount
+      int profitTakingPercentage
       BetStatus status
       bool enabled
       int priority
@@ -62,6 +71,9 @@ erDiagram
       int marketProfileId FK
       string category
       string keyword
+      int priority
+      int amount
+      int profitTakingPercentage
       BetStatus status
     }
 
@@ -83,7 +95,7 @@ erDiagram
 flowchart TD
   A[Incoming market slug + variant] --> B{Variant}
   B -->|CRYPTO_UP_DOWN| C[Match CryptoBet by pattern/priority]
-  B -->|SPORTS_TEAM_MATCH| D[Match SportsBet by category+keyword]
+  B -->|SPORTS_TEAM_MATCH| D[Match SportsBet by category+keyword+priority]
 
   C --> E{CryptoBet status}
   E -->|ACTIVE| F[Resolve MarketProfile configKey]
@@ -94,8 +106,9 @@ flowchart TD
   G -->|INACTIVE| X
 
   F --> H[Load BuyPositionConfig + SellPositionConfig]
-  H --> I[TradeService decides buy or sell]
-  I --> J[Persist/Update Trade]
+  H --> I[Apply optional CryptoBet or SportsBet overrides]
+  I --> J[TradeService decides buy or sell]
+  J --> K[Persist/Update Trade]
 ```
 
 ## Status behavior
@@ -106,6 +119,17 @@ flowchart TD
   - matching entry blocks continuation of buy/sell flow for the slug.
 
 This allows temporary pause/rollout control without deleting rules.
+
+## Override behavior
+
+- Buy amount resolution:
+  - `SportsBet.amount` / `CryptoBet.amount` (required)
+- Profit-taking resolution:
+  - `SportsBet.profitTakingPercentage` / `CryptoBet.profitTakingPercentage` when present
+  - otherwise env `PREDICT_PROFIT_TAKING_PERCENTAGE`
+- Sports team selection:
+  - if multiple `SportsBet` rows match the same slug, lower `priority` wins
+  - ties fall back to lower `id`
 
 ## API mapping
 
