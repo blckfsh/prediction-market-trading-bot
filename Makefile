@@ -1,7 +1,7 @@
 # Project automation for local development.
 # Requires GNU Make (on Windows, use Git Bash, WSL, or make via Chocolatey/Scoop).
 
-NPM ?= npm
+NPM ?= pnpm
 
 .PHONY: help install build lint format \
 	start dev debug prod \
@@ -76,7 +76,7 @@ zenstack-generate:
 	$(NPM) run zenstack:generate
 
 prisma-generate:
-	npx prisma generate --schema lib/prisma/schema.prisma
+	pnpm exec prisma generate --schema lib/prisma/schema.prisma
 
 migrate:
 	$(NPM) run db:migrate
